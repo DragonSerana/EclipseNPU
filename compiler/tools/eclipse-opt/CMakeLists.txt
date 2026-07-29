@@ -3,10 +3,9 @@ add_executable(eclipse-opt
 )
 
 target_link_libraries(eclipse-opt PRIVATE
-  MLIRExperimentalPasses 
-  MLIRPass
-  MLIRTransforms
-  MLIRSupport
   MLIRIR
-  EclipseDialect 
+  MLIRSupport
+  MLIRParser
+  MLIRAsmParser
+  EclipseDialect
 )

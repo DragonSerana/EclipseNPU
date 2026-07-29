@@ -4,6 +4,7 @@ export LLVM_DIR=/home/serana/mlir/llvm-project/install/lib/cmake/llvm
 export MLIR_DIR=/home/serana/mlir/llvm-project/install/lib/cmake/mlir
 
 export ECLIPSE_NPU_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="${ECLIPSE_NPU_ROOT}/build/bin:${PATH}"
 
 function Eclipse-build() {
     echo "[EclipseNPU] Starting build..."

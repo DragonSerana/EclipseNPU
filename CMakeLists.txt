@@ -23,6 +23,7 @@ set(ECLIPSE_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${ECLIPSE_SOURCE_DIR})
+include_directories(${ECLIPSE_SOURCE_DIR}/compiler/include)
 include_directories(${ECLIPSE_BINARY_DIR})
 
 add_subdirectory(runtime)

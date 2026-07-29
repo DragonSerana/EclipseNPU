@@ -7,7 +7,4 @@ add_mlir_dialect_library(EclipseDialect
   Dialect.cpp
   DEPENDS
   EclipseOpsInc
-  LINK_COMPONENTS
-  Core
-  MLIRIR
 )
