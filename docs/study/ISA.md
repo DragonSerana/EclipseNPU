@@ -39,3 +39,47 @@ CONV     SRAM_addr1, SRAM_addr2, SRAM_addr3
 
 # NPU核心 
     NPU核心与CPU不同，一个NPU Engine，内部有很多MAC(Multiply-Accumulate)单元，比如，256甚至更多,一次可以执行256次MAC运算
+
+# ISA设计
+    SYNC指令即插fence，conv/dma_loadi只是把指令下发，SYNC才是等待数据执行完毕
+    通过流水线可以隐藏DMA_LOAD/STORE的时间，但是由于木桶效应，读取效率仍然受读取时间限制，所以可以放大tile,尽量喂饱计算单元
+    一个 MAC 阵列，比如 16×16，16×16 = 256 个单元，1 个周期 = 256 次乘法 + 256 次加法（统称为 256 次 MAC 操作）。
+
+# 矩阵乘法
+    [1,2,3]
+    [4,5,6]
+    *
+    [11,12]
+    [13,14]
+    [15,16]
+    我理解的 矩阵乘法  就是 
+    [1*11+2*13+3*15,1*12+2*14+3*16]
+    [4*11+5*13+6*15, 4*12+5*14,6*16]
+    并行其实是下面这样并行，所以其实最大能利用MAC数，就是output shape,也就是M*N，规约轴K代表累加要跑多少次 
+    MAC0:1*11+2*13+3*15
+    MAC1:1*12+2*14+3*16
+    MAC2:4*11+5*13+6*15
+    MAC3:4*12+5*14,6*16
+
+# 数据类型
+    数据类型：fp16 和 int8 起步（int8 留给量化阶段）。
+    这里 不管是 FP16还是 int8,都是 同时最多256次乘法计算，就是浮点乘法要的晶体管多
+
+# 指令 
+    DMA_LOAD sram_addr, ddr_addr, rows, cols, src_stride
+    DMA_STORE
+        src_stride用来切小方块，比如我从1920*1080大方块要3rows，5cols的小方块(3行5列)，那就要配置src_stride就是1920，实际跳过了1920-5=1915，跳过这么多像素
+        指令的字段，filed,可以理解成函数的参数，放在NPU的DMA寄存器。
+        这个指令集有两种常见的方式，一个是指令里面只有DMA_LOAD，在DMA_LOAD之前把参数通过MOV指令挪到NPU DMA的CSR，还有就是带个Descriptor，放着包含这些参数的结构体的指针
+    
+    MATMUL	dst, lhs, rhs, M, N, K, accumulate
+        accumulate = 0（覆盖模式）：dst = LHS × RHS
+        accumulate = 1（累加模式）：dst = dst + (LHS × RHS)
+
+        所以 这个 参数的 目的就是 ，是否加上 SRAM上 本来的那个 dst的 值，一个可以用来切分超大块，比如 MAC 16*16,而我的 矩阵是 1024*1024 ，一次 MAC一行 都放不下 ，需要在 累加器之外 ，在进行 一次累加。还有一个 可以用来 算加 Bias
+    EWISE_ADD	dst, lhs, rhs, n
+    ACT	dst, src, n, kind(RELU/GELU)
+        n是element wize的长度，kind是激活的类型
+    SYCN
+        插fence,等待前面的指令执行成功
+    
