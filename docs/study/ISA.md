@@ -83,3 +83,16 @@ CONV     SRAM_addr1, SRAM_addr2, SRAM_addr3
     SYCN
         插fence,等待前面的指令执行成功
     
+# 指令格式
+    不做二进制编码，就用 C++ struct：
+
+    // runtime/include/eclipse_isa.h
+    enum class OpCode : uint32_t { DMA_LOAD, DMA_STORE, MATMUL, EWISE_ADD, ACT, SYNC };
+
+    struct Instruction {
+    OpCode opcode;
+    uint32_t dst, srcA, srcB;      // SRAM/DDR 地址（统一地址空间的偏移）
+    uint32_t M, N, K;              // 形状参数（EWISE 只用 N）
+    uint32_t strideA, strideB;
+    uint32_t flags;                // bit0: accumulate, bit1-3: act kind, ...
+    };
