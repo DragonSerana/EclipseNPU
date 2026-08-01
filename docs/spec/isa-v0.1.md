@@ -6,26 +6,27 @@
 ## 内存模型
     SRAM 0x10000000 - 0x10080000 共512KB
     DDR 0x80000000 - 0xc0000000 共1G
+        0x80000000 - 0x8000FFFF  命令队列区（64KB）：指令流 + descriptor，host 写入，NPU 取指
+        0x80010000 - 0xBFFFFFFF  数据区：tensor 数据
     字节对齐，tensor在内存上16字节对齐，编译器保证sram_addr/ddr_addr都是16字节对齐。
     内存控制器按照16Byte突发，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
     计算指令（MATMUL/ELEMENTWISE/ACT）的操作数在 SRAM 中必须 packed（行连续）存储；只有 DMA 支持 stride。
     DDR中，input tensor是啥样就啥样，SRAM中必须是packed。
 
 ## 执行模型
-    指令 = (opcode, desc_ptr)；desc_ptr 指向 DDR 中的参数结构体（descriptor）。
+    指令 = (opcode: u32, desc_ptr: u32)，定长 8 字节；desc_ptr 指向命令队列区中的参数结构体（descriptor）。
+    SYNC 无参数，desc_ptr = 0。
 
-    编译器把descriptor放在DDR中，目前为了可读性通过struct表示。
-    Host将指令放进循环队列，Simulator从队列读取code，读取后就删除。
+    编译器把指令流和 descriptor 布局在命令队列区，目前为了可读性通过 struct 表示。
+    Host将指令放进环形队列，Simulator从队列读取code，读取后就删除。
     指令顺序发出，但是不保证上条指令执行完毕，如果有强依赖关系，插入SYNC指令等待所有Code执行完毕。
 
 ## 数据类型
     v0.1 仅支持fp16 
     fp16 dtype = 0, size = 16bit， 带符号
-**TODO.后续支持uint8量化等**
 
 ## layout
     MATMUL v0.1 版本仅支持 MK*KN 
-**TODO.后续再支持transpose**
 
 ## 字段单位及大小端
     字节寻址，即地址表示Byte，小端序。地址为32bit
@@ -45,30 +46,29 @@
 
 3. MATMUL
     dst, lhs, rhs output/input1/input2 addr
-    M, N, K MKN轴的长度，最大取值为1024
-    accumulate accumulate = 0（覆盖模式），accumulate = 1（累加模式）
+    M, N, K MKN轴的长度（字段上限1024，仅为位宽说明）
+    accumulate: 0=覆盖模式，1=累加模式
 
+    合法性约束：一次 MATMUL 的 dst+lhs+rhs 三块 tile 必须同时驻留 SRAM；
+    违反时 simulator 直接 assert（真实硬件不检查，只会静默算错）。
     cmodel 支持任意 M,N,K≤1024；16 对齐仅为性能；padding 是编译器的可选优化
-**TODO.后续支持硬件padding到MAC数量**    
     dst和src暂时不支持inplace，即输入输出共用一块内存
-**TODO.后续支持inplace**
-    内部 ACC是fp32累加，写回fp16
+
+    数值语义：块内 fp32 累加，写回 fp16；accumulate=1 读回的 dst 是 fp16，
+    跨 K-block 的累加误差由软件承担（已知行为，v0.2 引入 fp32 累加区解决）。
     
 
 4. ELEMENTWISE_ADD
     dst, lhs, rhs output/input1/input2 addr
     n 长度，字节，编译器根据dtype手动计算
-**TODO.后续支持inplace**
-**TODO.后续支持broadcast**
 
 5. ACT
     dst, src output/input addr
     n 长度，字节，编译器根据dtype手动计算
-    kind 激活种类(RELU/GELU)
-**TODO.后续支持inplace**
+    kind 激活种类(RELU)
 
 6. SYNC
-    暂时无参数，表示fence all，等待所有指令执行完成
+    无参数，desc_ptr = 0，表示fence all，等待所有指令执行完成
 
 ## 示例
     struct dma_opcode_param { 
@@ -80,9 +80,7 @@
         uint32_t dst_stride;
     }
 
-    struct sync_opcode_param {
-        // 目前是空，预留
-    }    
+    // SYNC 无参数，desc_ptr = 0
 
     struct matmul_opcode_param { 
         // 除了DMA_LOAD/STORE，其他opcode的地址都是SRAM地址
@@ -115,7 +113,7 @@
     // 从15x32的tensor切出来15x31
     struct dma_opcode_param LOAD_MATMUL_LHS{
         sram_addr = 0x10000000;
-        ddr_addr = 0x80000000;
+        ddr_addr = 0x80010000;
         rows = 15; 
         cols = 31;
         src_stride = 32*2;
@@ -124,14 +122,14 @@
 
     struct dma_opcode_param LOAD_MATMUL_RHS{
         sram_addr = 0x100003B0; //LOAD_MATMUL_LHS.sram_addr+15*31*2，然后再16字节对齐
-        ddr_addr = 0x800003C0; 
+        ddr_addr = 0x800103C0; 
         rows = 31; 
         cols = 63;
         src_stride = 64*2;
         dst_stride = 63*2;
     }
 
-    struct matmul_opcode_param MATMUL_PARMA{
+    struct matmul_opcode_param MATMUL_PARAM{
         dst_addr = 0x10001300; // LOAD_MATMUL_RHS.sram_addr+31*63*2，然后再16字节对齐
         rhs_addr = LOAD_MATMUL_RHS.sram_addr;
         lhs_addr = LOAD_MATMUL_LHS.sram_addr;
@@ -142,31 +140,31 @@
     }
 
     struct dma_opcode_param LOAD_ELEMENTWISE_ADD_RHS{
-        sram_addr = 0x10001A70; // MATMUL_PARMA.dst_addr+15*63*2，然后再16字节对齐
-        ddr_addr = 0x80001340;
+        sram_addr = 0x10001A70; // MATMUL_PARAM.dst_addr+15*63*2，然后再16字节对齐
+        ddr_addr = 0x80011340;
         rows = 15; 
         cols = 63;
         src_stride = 63*2;
         dst_stride = 63*2;
     }
 
-    struct elementwise_add_opcode_param ELEMENTWISE_ADD_PARMA{ 
+    struct elementwise_add_opcode_param ELEMENTWISE_ADD_PARAM{ 
         dst_addr = 0x100021E0; 
-        rhs_addr = MATMUL_PARMA.dst_addr;
+        rhs_addr = MATMUL_PARAM.dst_addr;
         lhs_addr = LOAD_ELEMENTWISE_ADD_RHS.sram_addr;
         n = 15*63*2;
     }
 
     struct act_opcode_param ACT_PARAM { 
         dst_addr = 0x10002950; 
-        src_addr = ELEMENTWISE_ADD_PARMA.dst_addr;
+        src_addr = ELEMENTWISE_ADD_PARAM.dst_addr;
         n = 15*63*2;
         kind = Relu(0);
     }
 
     struct dma_opcode_param STORE_ACT_DST{
         sram_addr = ACT_PARAM.dst_addr;
-        ddr_addr = 0x80001AC0;
+        ddr_addr = 0x80011AC0;
         rows = 15; 
         cols = 63;
         src_stride = 63*2;
@@ -176,16 +174,29 @@
     // matmul+elementwise_add+relu
     // [15*31]*[31*63] = [15*63] -> [15*63] + [15*63] = [15*63] -> Relu([15*63]) = [15*63]
     // v0.1不排pipeline
-    0x8000: DMA_LOAD  LOAD_MATMUL_LHS
-    0x8004: DMA_LOAD  LOAD_MATMUL_RHS
-    0x8008: SYNC SYNC_PARAM // 保证两个DMA_LOAD完毕
-    0x800C: MATMUL  MATMUL_PARMA
-    0x8010: SYNC SYNC_PARAM // 保证MATMUL计算完毕        
-    0x8014: DMA_LOAD LOAD_ELEMENTWISE_ADD_RHS
-    0x8018: SYNC SYNC_PARAM // 保证DMA_LOAD完毕        
-    0x801C: ELEMENTWISE_ADD ELEMENTWISE_ADD_PARMA
-    0x8020: SYNC SYNC_PARAM // 保证ELEMENTWISE_ADD计算完毕  
-    0x8024: ACT ACT_PARAM 
-    0x8028: SYNC SYNC_PARAM // 保证ACT计算完毕  
-    0x802C: DMA_STORE STORE_ACT_DST
-    0x8030: SYNC SYNC_PARAM // 保证DMA_STORE完毕  
+    // 指令流放在命令队列区（0x80000000起），定长8字节，descriptor 也在命令队列区内
+    0x80000000: DMA_LOAD  LOAD_MATMUL_LHS
+    0x80000008: DMA_LOAD  LOAD_MATMUL_RHS
+    0x80000010: SYNC      // 保证两个DMA_LOAD完毕
+    0x80000018: MATMUL    MATMUL_PARAM
+    0x80000020: SYNC      // 保证MATMUL计算完毕
+    0x80000028: DMA_LOAD  LOAD_ELEMENTWISE_ADD_RHS
+    0x80000030: SYNC      // 保证bias搬运完毕
+    0x80000038: ELEMENTWISE_ADD ELEMENTWISE_ADD_PARAM
+    0x80000040: SYNC      // 保证ELEMENTWISE_ADD计算完毕
+    0x80000048: ACT       ACT_PARAM
+    0x80000050: SYNC      // 保证ACT计算完毕
+    0x80000058: DMA_STORE STORE_ACT_DST
+    0x80000060: SYNC      // 保证DMA_STORE完毕
+
+## v0.2 规划（仅占位，未实现）
+    - REDUCE 指令（max/sum/argmax）：Argmax、softmax 前置
+    - EXP / LUT：softmax、GELU 精确版前置
+    - DMA_LOAD_ASYNC + WAIT tag：双缓冲，用计算掩盖搬运
+    - fp32 累加区（ACC）：MAC 阵列出口的专用 fp32 RAM，独立地址空间（如 0x20000000，64KB），
+      仅 MATMUL 和 MOVER 可访问；MATMUL 的 dst 指向 ACC 时 K 维接力全程 fp32，不再经过 SRAM 的 fp16；
+      新增 MOVER 指令：ACC(fp32) → SRAM(fp16) 量化，可选融合 activation
+    - 硬件 padding 到 MAC 倍数（依赖 roofline 实验数据决策）
+    - uint8/int8 量化
+    - EWISE/ACT inplace、broadcast
+    - MATMUL transpose layout
