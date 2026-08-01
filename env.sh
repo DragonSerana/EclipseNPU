@@ -21,3 +21,22 @@ function Eclipse-clean() {
     mkdir "${ECLIPSE_NPU_ROOT}/build"
     echo "[EclipseNPU] Clean done."
 }
+
+function Eclipse-clangd() {
+    if ! command -v clangd > /dev/null; then
+        echo "[EclipseNPU] clangd not found in PATH"
+        return 1
+    fi
+    local files=("$@")
+    if [[ ${#files[@]} -eq 0 ]]; then
+        echo "[EclipseNPU] Scanning for .h/.c/.hpp/.cpp files..."
+        mapfile -t files < <(find "${ECLIPSE_NPU_ROOT}" -type f \
+            \( -name "*.h" -o -name "*.c" -o -name "*.hpp" -o -name "*.cpp" \) \
+            -not -path "*/build/*" -not -path "*/.git/*" -not -path "*/.kilo/*")
+    fi
+    for f in "${files[@]}"; do
+        echo "[EclipseNPU] clangd --check ${f}"
+        clangd --check="${f}"
+    done
+    echo "[EclipseNPU] clangd check done."
+}
