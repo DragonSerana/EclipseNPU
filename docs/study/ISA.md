@@ -96,3 +96,8 @@ CONV     SRAM_addr1, SRAM_addr2, SRAM_addr3
     uint32_t strideA, strideB;
     uint32_t flags;                // bit0: accumulate, bit1-3: act kind, ...
     };
+
+# pitch和字节对齐
+    pitch，行间距。是二维矩阵按行存放时，相邻两行起始地址之间的距离
+    字节对齐，为了减少内存突发,让下一个读取内存操作的起始地址是16的倍数。内存一口气上来的16byte，地址必须是16的倍数。
+    如果我要15个数，比如uint8 a[15]。内存控制器其实一口气拿了16个byte,然后只用其中的15个是吧。就是下次分配buffer的时候，是从15+1开始往后 申请地址，这样如果数据是b[2]，内存控制器就可以i一口气拿上来，不是先拿16里面的1byte ，再拿上里17的1byte数据。
