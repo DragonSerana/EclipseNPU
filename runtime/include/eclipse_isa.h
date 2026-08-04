@@ -1,14 +1,27 @@
 #ifndef ECLIPSE_ISA_H
 #define ECLIPSE_ISA_H
 
+#include <cstdint>
+
 #define SRAM_ADDR 0x10000000
 #define DDR_ADDR 0x80000000
 
 #define SRAM_SIZE 0x80000
 #define DDR_SIZE 0x40000000
 
-typedef unsigned int uint32_t;
-typedef unsigned char uint8_t;
+enum Opcode {
+    DMA_LOAD,
+    DMA_STORE,
+    MATMUL,
+    ELEMENTWISE_ADD,
+    ACT,
+    SYNC
+};
+
+struct Instruction{
+    Opcode opcode;
+    uint32_t desc_ptr;  
+};
 
 struct dma_opcode_param { 
     uint32_t sram_addr;
