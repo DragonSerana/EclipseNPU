@@ -1,5 +1,6 @@
 #include "cmodel.h"
 #include "eclipse_assert.h"
+#include <cstring>
 
 using namespace eclipse;
 
@@ -23,8 +24,22 @@ uint8_t *CModel::sram(uint32_t addr) {
 void CModel::exec(const Instruction &inst) {
   switch (inst.opcode) {
     case OpCode::DMA_LOAD: {
-      
-      
+      const auto* desc = reinterpret_cast<const dma_opcode_param *>(ddr(inst.desc_ptr));
+      for(uint32_t i = 0; i < desc->rows; i++) {
+        uint8_t *src = ddr(desc->ddr_addr + (desc->src_stride * i));
+        // 在packet情况下，desc->dst_stride与desc->cols * DTYPE_SIZE相等
+        uint8_t *dst = sram(desc->sram_addr + (desc->dst_stride * i)); 
+        memcpy(dst, src, desc->cols * DTYPE_SIZE);
+      }
+      break;
+    }
+    case OpCode::DMA_STORE: {
+      const auto* desc = reinterpret_cast<const dma_opcode_param *>(ddr(inst.desc_ptr));
+      for(uint32_t i = 0; i < desc->rows; i++) {
+        uint8_t *src = sram(desc->sram_addr + (desc->src_stride * i));
+        uint8_t *dst = ddr(desc->ddr_addr + (desc->dst_stride * i)); 
+        memcpy(dst, src, desc->cols * DTYPE_SIZE);
+      }
       break;
     }
 

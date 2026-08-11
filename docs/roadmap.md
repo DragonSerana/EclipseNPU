@@ -5,7 +5,6 @@
 
 ## 北极星（防跑偏锚点）
 
-目标岗位：高性能算子/编译器工程师（模型厂 infra、芯片厂工具链团队通用）。
 核心技能锚点：MLIR lowering 栈（linalg / transform / memref / scf）、tiling 与调度、roofline 性能分析、ISA 协同设计。
 
 **决策规则**：任何一块工作，最终必须落在以下三处之一，落不下去就是跑偏，砍掉：

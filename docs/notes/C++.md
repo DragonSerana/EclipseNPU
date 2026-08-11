@@ -15,5 +15,7 @@
     编译期常量，要求编译期计算完毕。但是比define多了类型检查
  
 4. const
-    int const \*p → p 是指针（*），指向 const int → 值是常量。
-    int * const p → p 是常量（const），类型是 int* → 指针是常量。
+    const 永远修饰它左边最近的那个东西；如果左边没有东西，才修饰右边最近的那个。而且最多修饰一个。
+    const dma_opcode_param* desc，左边没东西，那就修饰右边，也就是dma_opcode_param，而不是 dma_opcode_param*
+    dma_opcode_param* const desc，左边有东西，*，那也就说指针是const
+    dma_opcode_param  const* desc，左边有东西，dma_opcode_param，那也就说值是const

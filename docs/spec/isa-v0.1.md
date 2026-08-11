@@ -35,11 +35,12 @@
 1. DMA_LOAD
     sram_addr SRAM地址
     ddr_addr DDR地址，这里地址就是要搬运的地址，如果是整个input,那就是整个input的头，如果是小块，那就是工具链算好的小块的头
-    rows 行(裁剪的小tensor行数)
-    cols 列(裁剪的小tensor列数)
-    src_stride 切小方块时，要跳过的长度，即原内存pitch。
+    //这两个参数的目的是为了tile，比如从640x480抠出来一个8x8的tensor.
+    rows 行(裁剪的小tensor行数，单位是元素)
+    cols 列(裁剪的小tensor列数，单位是元素)
+    src_stride 切小方块时，要跳过的长度，即原内存pitch。单位是byte
         地址(i,j) = base + i*src_stride + j *dtype_size   (i in [0,rows), j in [0,cols))
-    dst_stride 目标内存的pitch，packed 就是 dst_stride == cols * dtype_size，紧密排列
+    dst_stride 目标内存的pitch，packed 就是 dst_stride == cols * dtype_size，紧密排列，单位是byte
 
 2. DMA_STORE
     同DMA_LOAD
