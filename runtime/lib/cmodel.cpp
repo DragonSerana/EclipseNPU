@@ -42,6 +42,21 @@ void CModel::exec(const Instruction &inst) {
       }
       break;
     }
+    case OpCode::MATMUL: {
+      const auto* desc = reinterpret_cast<const matmul_opcode_param *>(ddr(inst.desc_ptr));
+      for(int m = 0; m < desc->M; m++) {
+        for(int n = 0; n < desc->N; n++){
+          for(int k = 0; k < desc->K; k++){
+            uint8_t *lhs = sram(desc->lhs_addr+((m*desc->K)+k)*DTYPE_SIZE);
+            uint8_t *rhs = sram(desc->rhs_addr+((k*desc->N)+n)*DTYPE_SIZE);
+            uint8_t *dst = sram(desc->dst_addr+((m*desc->N)+n)*DTYPE_SIZE);
+
+            *dst += *lhs * *rhs;
+          }
+        }
+      }
+      break;
+    }
 
     default: 
       ECLIPSE_ASSERT(false, "Instruction must have opcode!");

@@ -190,14 +190,25 @@
     0x80000058: DMA_STORE STORE_ACT_DST
     0x80000060: SYNC      // 保证DMA_STORE完毕
 
-## v0.2 规划（仅占位，未实现）
-    - REDUCE 指令（max/sum/argmax）：Argmax、softmax 前置
-    - EXP / LUT：softmax、GELU 精确版前置
+## v0.2 规划（占位，待 H3 ops-audit 完成后冻结）
+
+    目标模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE；备选 TinyLlama 1.1B）。
+    逐算子的指令缺口见 docs/ops-audit.md（H3 产出），本清单随审计结果修订。
+
+    - REDUCE（max/sum/平方和）：Argmax、softmax、RMSNorm 前置
+    - EWISE_MUL：SwiGLU（silu 结果逐元素乘）、RoPE 旋转的逐元素乘；v0.1 只有 ELEMENTWISE_ADD
+    - DIV/RSQRT：RMSNorm（x/sqrt(mean(x^2)+eps)）、softmax 归一化
+    - EXP / LUT：softmax、SiLU；若选 GELU 系模型则需 tanh/erf LUT
+    - sin/cos LUT：RoPE
     - DMA_LOAD_ASYNC + WAIT tag：双缓冲，用计算掩盖搬运
     - fp32 累加区（ACC）：MAC 阵列出口的专用 fp32 RAM，独立地址空间（如 0x20000000，64KB），
       仅 MATMUL 和 MOVER 可访问；MATMUL 的 dst 指向 ACC 时 K 维接力全程 fp32，不再经过 SRAM 的 fp16；
       新增 MOVER 指令：ACC(fp32) → SRAM(fp16) 量化，可选融合 activation
     - 硬件 padding 到 MAC 倍数（依赖 roofline 实验数据决策）
-    - uint8/int8 量化
-    - EWISE/ACT inplace、broadcast
-    - MATMUL transpose layout
+    - uint8/int8 量化（后置：fp16 全链路对拍通过之后再上，避免精度问题污染集成问题）
+    - EWISE/ACT inplace、broadcast（RMSNorm 乘 scale、RoPE 乘 scalar 等）
+    - MATMUL transpose layout（KV cache / RoPE 场景）
+    - 内存容量：DDR 扩到 2GB（fp16 权重约 1.4GB + 数据区；改宏即可）
+
+    v0.2 仍无间接寻址：token 依赖地址（嵌入行、KV cache 位置）由 per-input 静态编译
+    在编译期烘焙进 DMA descriptor；间接 DMA 寻址留 v0.3。
