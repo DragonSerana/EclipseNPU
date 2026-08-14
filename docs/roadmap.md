@@ -1,9 +1,10 @@
-# EclipseNPU Roadmap v0.3
+# EclipseNPU Roadmap v0.4
 
 > 愿景：从零完成一颗 NPU（ISA → 工具链 → 算子 → simulator/cmodel），在自研模拟器上跑通 0.7B 量级 LLM，并在真硬件（RDNA4 9070 XT）上验证同一套编译/tiling 方法论。
 > 方向取舍：主攻**编译器 + 算子**；通信不设为主线目标（主线阶段不做 NCCL/RCCL/多卡，主线完成后作为远期尝试）。
 > 通用验收原则：每一步的数值验证一律与 PyTorch golden 对拍；每个里程碑必须有明确 done 标准 + 一样可对外展示的产出物，才算完。
 > v0.3 变更：GPU 真硬件辅线并入主线节奏（不再后置）；LLM 保留为北极星里程碑但 done 标准写死；CNN 降为可选项；多卡降为远期可选项。
+> v0.4 变更：H3 与 H4 之间插入 H3.5（单 decoder layer 端到端）——直接上全模型风险太大，先用一层把集成问题全部暴露一遍；CNN 维持可选项不进主线。
 
 ## 北极星（防跑偏锚点）
 
@@ -67,9 +68,18 @@
    - done: 三算子对拍通过；生成版性能 ≥ 手写 golden 的 90%；isa-v0.2 合同与 ops-audit.md 齐备
    - 产出物：ops-audit.md + isa-v0.2 合同 + "v0.1→v0.2 是被哪些模型算子逼出来的"总结
 
+## H3.5（v0.4 新增）：单 decoder layer 端到端
+
+9. 单层 transformer 全链路对拍（H4 的探针，先暴露集成问题）
+   - 范围：一层 RMSNorm → QKV projection → attention（GQA + RoPE + KV cache 写入）→ 残差 → RMSNorm → SwiGLU MLP → 残差；prefill 8 token + decode 2 token
+   - 目的：在小规模上把 H4 的集成问题全部暴露一遍——权重转换流程（safetensors → 自家格式）、多算子调度与 SRAM 编排、softmax 数值稳定、token 依赖地址烘焙、逐层 cycle 拆解
+   - 通过标准：H4 扩到全部层数时只剩"堆量"问题，不再出现新类型的问题
+   - done: 与 PyTorch fp16 单层参考对拍通过（容差在开始时写入文档，H4 沿用）；输出分算子 cycle 拆解报告
+   - 产出物：单层对拍脚本 + 权重转换工具链 + 分算子 cycle 拆解报告
+
 ## H4（原 Phase 4 的 LLM）：0.7B LLM 跑通
 
-9. 全模型推理
+10. 全模型推理
    - done 标准写死：模型 Qwen2.5-0.5B；prefill 128 + decode 16 token；logits/输出与 PyTorch fp16 参考对拍（容差在开始时写入 H4 文档）；输出全模型 cycle 报告
    - 权重格式转换（safetensors → 自家格式）
    - 仿真成本预核算：每 token ≈ 2×参数量 FLOP（0.5B 模型约 1 GFLOP/token），标量仿真几十秒/token，prefill 128 + decode 16 一夜可出；不追求吞吐，只追求正确
@@ -78,7 +88,7 @@
 
 ## H5（新增）：GPU 深潜 —— 双后端闭环
 
-10. LLM 跑通之后的主战场：
+11. LLM 跑通之后的主战场：
     - CK/rocBLAS 调优：双缓冲、swizzle、bank conflict、WMMA 极限、async copy
     - 给 MLIR 写 ROCDL CodeGen 路径：让 H2 的 linalg 栈直接生成 HIP kernel，与 H2 手写 golden 对拍
     - done: MLIR 生成的 GEMM 在 9070 XT 上达到手写 golden 的 90%+；"同一 tiling 决策、两个后端（自研模拟器 + RDNA4）"的 co-design 对比报告
@@ -98,5 +108,6 @@
 | H2 主线 | 职责 #3 编译器（MLIR） | lowering 链 + lit + CI |
 | H2 辅线 | 职责 #1 算子（HIP/roofline） | 手写 GEMM + 真卡 roofline |
 | H3 | 职责 #4 co-design | ops-audit + isa-v0.2 |
+| H3.5 | 全栈集成预演 | 单层对拍 + 分算子 cycle 拆解 |
 | H4 | 全栈集成视野 | LLM 对拍 + cycle 报告 |
 | H5 | 硬件的物理极限 | 双后端对比报告 |
