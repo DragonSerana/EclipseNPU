@@ -16,6 +16,6 @@
  
 4. const
     const 永远修饰它左边最近的那个东西；如果左边没有东西，才修饰右边最近的那个。而且最多修饰一个。
-    const DMAOpcodeParam* desc，左边没东西，那就修饰右边，也就是DMAOpcodeParam，而不是 DMAOpcodeParam*
-    DMAOpcodeParam* const desc，左边有东西，*，那也就说指针是const
-    DMAOpcodeParam  const* desc，左边有东西，DMAOpcodeParam，那也就说值是const
+    const DMAParam* desc，左边没东西，那就修饰右边，也就是DMAParam，而不是 DMAParam*
+    DMAParam* const desc，左边有东西，*，那也就说指针是const
+    DMAParam  const* desc，左边有东西，DMAParam，那也就说值是const

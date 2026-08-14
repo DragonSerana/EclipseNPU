@@ -1,9 +1,10 @@
 #ifndef ECLIPSE_DTYPE_H
 #define ECLIPSE_DTYPE_H
 
-// fp16/bf16 转换。内存里只有字节，dtype 只存在于读/写边界：MAC 输入级 fp16→fp32，
-// 输出级 fp32→fp16（RNE 舍入，一次）。位运算实现，不依赖编译器扩展，RTL 可复用。
-// v0.1 只走 fp16；bf16 为 v0.2 备好，接入时换函数即可。
+// fp16/bf16 转换。内存里只有字节，dtype 只存在于读/写边界：MAC 输入级
+// fp16→fp32， 输出级 fp32→fp16（RNE
+// 舍入，一次）。位运算实现，不依赖编译器扩展，RTL 可复用。 v0.1 只走 fp16；bf16
+// 为 v0.2 备好，接入时换函数即可。
 
 #include <cstdint>
 #include <cstring>

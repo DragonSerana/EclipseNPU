@@ -1,9 +1,9 @@
 #ifndef CMODEL_H
 #define CMODEL_H
 
+#include "dtype.h"
 #include "eclipse_isa.h"
 #include <vector>
-#include "dtype.h"
 
 namespace eclipse {
 

@@ -31,44 +31,67 @@ void CModel::writeFP16(uint32_t addr, float v) {
 
 void CModel::exec(const Instruction &inst) {
   switch (inst.opcode) {
-    case OpCode::DMA_LOAD: {
-      const auto* desc = reinterpret_cast<const DMAOpcodeParam *>(ddr(inst.descPtr));
-      for(uint32_t i = 0; i < desc->rows; i++) {
-        uint8_t *src = ddr(desc->ddrAddr + (desc->srcStride * i));
-        // 在packet情况下，desc->dstStride与desc->cols * DTYPE_SIZE相等
-        uint8_t *dst = sram(desc->sramAddr + (desc->dstStride * i));
-        memcpy(dst, src, desc->cols * DTYPE_SIZE);
-      }
-      break;
+  case OpCode::DMA_LOAD: {
+    const auto *desc = reinterpret_cast<const DMAParam *>(ddr(inst.descPtr));
+    for (uint32_t i = 0; i < desc->rows; i++) {
+      uint8_t *src = ddr(desc->ddrAddr + (desc->srcStride * i));
+      // 在packet情况下，desc->dstStride与desc->cols * DTYPE_SIZE相等
+      uint8_t *dst = sram(desc->sramAddr + (desc->dstStride * i));
+      memcpy(dst, src, desc->cols * DTYPE_SIZE);
     }
-    case OpCode::DMA_STORE: {
-      const auto* desc = reinterpret_cast<const DMAOpcodeParam *>(ddr(inst.descPtr));
-      for(uint32_t i = 0; i < desc->rows; i++) {
-        uint8_t *src = sram(desc->sramAddr + (desc->srcStride * i));
-        uint8_t *dst = ddr(desc->ddrAddr + (desc->dstStride * i));
-        memcpy(dst, src, desc->cols * DTYPE_SIZE);
-      }
-      break;
+    break;
+  }
+  case OpCode::DMA_STORE: {
+    const auto *desc = reinterpret_cast<const DMAParam *>(ddr(inst.descPtr));
+    for (uint32_t i = 0; i < desc->rows; i++) {
+      uint8_t *src = sram(desc->sramAddr + (desc->srcStride * i));
+      uint8_t *dst = ddr(desc->ddrAddr + (desc->dstStride * i));
+      memcpy(dst, src, desc->cols * DTYPE_SIZE);
     }
-    case OpCode::MATMUL: {
-      const auto* desc = reinterpret_cast<const MATMULOpcodeParam *>(ddr(inst.descPtr));
-      for(int m = 0; m < desc->M; m++) {
-        for(int n = 0; n < desc->N; n++){
-          float acc = 0.0f;
-          for(int k = 0; k < desc->K; k++){
-            acc += readFP16(desc->lhsAddr+((m*desc->K)+k)*DTYPE_SIZE) *
-                   readFP16(desc->rhsAddr+((k*desc->N)+n)*DTYPE_SIZE);
-          }
-          if(desc->accumulate) {
-            acc += readFP16(desc->dstAddr+((m*desc->N)+n)*DTYPE_SIZE);
-          }
-          writeFP16(desc->dstAddr+((m*desc->N)+n)*DTYPE_SIZE, acc);
+    break;
+  }
+  case OpCode::MATMUL: {
+    const auto *desc = reinterpret_cast<const MatmulParam *>(ddr(inst.descPtr));
+    for (uint32_t m = 0; m < desc->M; m++) {
+      for (uint32_t n = 0; n < desc->N; n++) {
+        float acc = 0.0f;
+        for (uint32_t k = 0; k < desc->K; k++) {
+          acc += readFP16(desc->lhsAddr + ((m * desc->K) + k) * DTYPE_SIZE) *
+                 readFP16(desc->rhsAddr + ((k * desc->N) + n) * DTYPE_SIZE);
         }
+        if (desc->accumulate) {
+          acc += readFP16(desc->dstAddr + ((m * desc->N) + n) * DTYPE_SIZE);
+        }
+        writeFP16(desc->dstAddr + ((m * desc->N) + n) * DTYPE_SIZE, acc);
       }
-      break;
     }
-
-    default:
-      ECLIPSE_ASSERT(false, "Instruction must have opcode!");
+    break;
+  }
+  case OpCode::ELEMENTWISE_ADD: {
+    const auto *desc =
+        reinterpret_cast<const EwiseAddParam *>(ddr(inst.descPtr));
+    for (uint32_t i = 0; i < desc->n; i++) {
+      const float lhs = readFP16(desc->lhsAddr + i * DTYPE_SIZE);
+      const float rhs = readFP16(desc->rhsAddr + i * DTYPE_SIZE);
+      writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs + rhs);
+    }
+    break;
+  }
+  case OpCode::ACT: {
+    const auto *desc = reinterpret_cast<const ActParam *>(ddr(inst.descPtr));
+    if (desc->kind != ActKind::RELU)
+      ECLIPSE_ASSERT(false, "unsupported act kind");
+    for (uint32_t i = 0; i < desc->n; i++) {
+      const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
+      writeFP16(desc->dstAddr + i * DTYPE_SIZE, src > 0.0f ? src : 0.0f);
+    }
+    break;
+  }
+  case OpCode::SYNC: {
+    // cmodel 顺序执行，指令天然串行完成，SYNC 无需额外动作
+    break;
+  }
+  default:
+    ECLIPSE_ASSERT(false, "Instruction must have opcode!");
   }
 }

@@ -61,18 +61,18 @@
 
 4. ELEMENTWISE_ADD
     dst, lhs, rhs output/input1/input2 addr
-    n 长度，字节，编译器根据dtype手动计算
+    n 长度，元素数
 
 5. ACT
     dst, src output/input addr
-    n 长度，字节，编译器根据dtype手动计算
-    kind 激活种类(RELU)
+    n 长度，元素数
+    kind 激活种类（ActKind 枚举，v0.1 仅 RELU）
 
 6. SYNC
     无参数，descPtr = 0，表示fence all，等待所有指令执行完成
 
 ## 示例
-    struct DMAOpcodeParam { 
+    struct DMAParam { 
         uint32_t sramAddr;
         uint32_t ddrAddr; // 模拟空间的物理地址，不是x86的malloc地址
         uint32_t rows; //rows和cols都是元素数
@@ -83,7 +83,7 @@
 
     // SYNC 无参数，descPtr = 0
 
-    struct MATMULOpcodeParam { 
+    struct MatmulParam { 
         // 除了DMA_LOAD/STORE，其他opcode的地址都是SRAM地址
         uint32_t dstAddr;
         uint32_t rhsAddr;
@@ -94,25 +94,25 @@
         uint32_t accumulate;
     }
 
-    struct ElementwiseAddOpcodeParam { 
+    struct EwiseAddParam { 
         uint32_t dstAddr;
         uint32_t rhsAddr;
         uint32_t lhsAddr;
-        uint32_t n;
+        uint32_t n; // 元素数
     }
 
-    struct ActOpcodeParam {
+    struct ActParam {
         uint32_t dstAddr;
         uint32_t srcAddr;
-        uint32_t n;
-        uint32_t kind;
+        uint32_t n; // 元素数
+        ActKind kind; // 激活种类，v0.1 仅 RELU
         union { //给其他激活传参数用
             uint32_t extra[4];
         }
     }
 
     // 从15x32的tensor切出来15x31
-    struct DMAOpcodeParam loadMatmulLhs{
+    struct DMAParam loadMatmulLhs{
         sramAddr = 0x10000000;
         ddrAddr = 0x80010000;
         rows = 15; 
@@ -121,7 +121,7 @@
         dstStride = 31*2;
     }
 
-    struct DMAOpcodeParam loadMatmulRhs{
+    struct DMAParam loadMatmulRhs{
         sramAddr = 0x100003B0; //loadMatmulLhs.sramAddr+15*31*2，然后再16字节对齐
         ddrAddr = 0x800103C0; 
         rows = 31; 
@@ -130,7 +130,7 @@
         dstStride = 63*2;
     }
 
-    struct MATMULOpcodeParam matmulParam{
+    struct MatmulParam matmulParam{
         dstAddr = 0x10001300; // loadMatmulRhs.sramAddr+31*63*2，然后再16字节对齐
         rhsAddr = loadMatmulRhs.sramAddr;
         lhsAddr = loadMatmulLhs.sramAddr;
@@ -140,7 +140,7 @@
         accumulate = 0;
     }
 
-    struct DMAOpcodeParam loadElementwiseAddRhs{
+    struct DMAParam loadElementwiseAddRhs{
         sramAddr = 0x10001A70; // matmulParam.dstAddr+15*63*2，然后再16字节对齐
         ddrAddr = 0x80011340;
         rows = 15; 
@@ -149,21 +149,21 @@
         dstStride = 63*2;
     }
 
-    struct ElementwiseAddOpcodeParam elementwiseAddParam{ 
+    struct EwiseAddParam elementwiseAddParam{ 
         dstAddr = 0x100021E0; 
         rhsAddr = matmulParam.dstAddr;
         lhsAddr = loadElementwiseAddRhs.sramAddr;
-        n = 15*63*2;
+        n = 15*63;
     }
 
-    struct ActOpcodeParam actParam { 
+    struct ActParam actParam { 
         dstAddr = 0x10002950; 
         srcAddr = elementwiseAddParam.dstAddr;
-        n = 15*63*2;
+        n = 15*63;
         kind = Relu(0);
     }
 
-    struct DMAOpcodeParam storeActDst{
+    struct DMAParam storeActDst{
         sramAddr = actParam.dstAddr;
         ddrAddr = 0x80011AC0;
         rows = 15; 

@@ -6,7 +6,6 @@
 
 namespace eclipse {
 
-// 内存映射与数据宽度（ISA 合同，与 docs/spec/isa-v0.1.md 一致）
 constexpr uint32_t SRAM_ADDR = 0x10000000;
 constexpr uint32_t DDR_ADDR = 0x80000000;
 
@@ -24,12 +23,14 @@ enum class OpCode : uint32_t {
   SYNC
 };
 
+enum class ActKind : uint32_t { RELU };
+
 struct Instruction {
   OpCode opcode;
   uint32_t descPtr;
 };
 
-struct DMAOpcodeParam {
+struct DMAParam {
   uint32_t sramAddr;
   uint32_t ddrAddr;
   uint32_t rows;
@@ -38,7 +39,7 @@ struct DMAOpcodeParam {
   uint32_t dstStride;
 };
 
-struct MATMULOpcodeParam {
+struct MatmulParam {
   uint32_t dstAddr;
   uint32_t rhsAddr;
   uint32_t lhsAddr;
@@ -48,18 +49,18 @@ struct MATMULOpcodeParam {
   uint32_t accumulate;
 };
 
-struct ElementwiseAddOpcodeParam {
+struct EwiseAddParam {
   uint32_t dstAddr;
   uint32_t rhsAddr;
   uint32_t lhsAddr;
-  uint32_t n;
+  uint32_t n; // 元素数
 };
 
-struct ActOpcodeParam {
+struct ActParam {
   uint32_t dstAddr;
   uint32_t srcAddr;
-  uint32_t n;
-  uint32_t kind;
+  uint32_t n; // 元素数
+  ActKind kind;
   union {
     uint32_t extra[4];
   };
