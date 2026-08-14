@@ -8,14 +8,14 @@
     DDR 0x80000000 - 0xc0000000 共1G
         0x80000000 - 0x8000FFFF  命令队列区（64KB）：指令流 + descriptor，host 写入，NPU 取指
         0x80010000 - 0xBFFFFFFF  数据区：tensor 数据
-    字节对齐，tensor在内存上16字节对齐，编译器保证sram_addr/ddr_addr都是16字节对齐。
+    字节对齐，tensor在内存上16字节对齐，编译器保证sramAddr/ddrAddr都是16字节对齐。
     内存控制器按照16Byte突发，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
     计算指令（MATMUL/ELEMENTWISE/ACT）的操作数在 SRAM 中必须 packed（行连续）存储；只有 DMA 支持 stride。
     DDR中，input tensor是啥样就啥样，SRAM中必须是packed。
 
 ## 执行模型
-    指令 = (opcode: u32, desc_ptr: u32)，定长 8 字节；desc_ptr 指向命令队列区中的参数结构体（descriptor）。
-    SYNC 无参数，desc_ptr = 0。
+    指令 = (opcode: u32, descPtr: u32)，定长 8 字节；descPtr 指向命令队列区中的参数结构体（descriptor）。
+    SYNC 无参数，descPtr = 0。
 
     编译器把指令流和 descriptor 布局在命令队列区，目前为了可读性通过 struct 表示。
     Host将指令放进环形队列，Simulator从队列读取code，读取后就删除。
@@ -33,14 +33,14 @@
 
 ## 指令集设计
 1. DMA_LOAD
-    sram_addr SRAM地址
-    ddr_addr DDR地址，这里地址就是要搬运的地址，如果是整个input,那就是整个input的头，如果是小块，那就是工具链算好的小块的头
+    sramAddr SRAM地址
+    ddrAddr DDR地址，这里地址就是要搬运的地址，如果是整个input,那就是整个input的头，如果是小块，那就是工具链算好的小块的头
     //这两个参数的目的是为了tile，比如从640x480抠出来一个8x8的tensor.
     rows 行(裁剪的小tensor行数，单位是元素)
     cols 列(裁剪的小tensor列数，单位是元素)
-    src_stride 切小方块时，要跳过的长度，即原内存pitch。单位是byte
-        地址(i,j) = base + i*src_stride + j *dtype_size   (i in [0,rows), j in [0,cols))
-    dst_stride 目标内存的pitch，packed 就是 dst_stride == cols * dtype_size，紧密排列，单位是byte
+    srcStride 切小方块时，要跳过的长度，即原内存pitch。单位是byte
+        地址(i,j) = base + i*srcStride + j *dtype_size   (i in [0,rows), j in [0,cols))
+    dstStride 目标内存的pitch，packed 就是 dstStride == cols * dtype_size，紧密排列，单位是byte
 
 2. DMA_STORE
     同DMA_LOAD
@@ -69,41 +69,41 @@
     kind 激活种类(RELU)
 
 6. SYNC
-    无参数，desc_ptr = 0，表示fence all，等待所有指令执行完成
+    无参数，descPtr = 0，表示fence all，等待所有指令执行完成
 
 ## 示例
-    struct dma_opcode_param { 
-        uint32_t sram_addr;
-        uint32_t ddr_addr; // 模拟空间的物理地址，不是x86的malloc地址
+    struct DMAOpcodeParam { 
+        uint32_t sramAddr;
+        uint32_t ddrAddr; // 模拟空间的物理地址，不是x86的malloc地址
         uint32_t rows; //rows和cols都是元素数
         uint32_t cols;
-        uint32_t src_stride;
-        uint32_t dst_stride;
+        uint32_t srcStride;
+        uint32_t dstStride;
     }
 
-    // SYNC 无参数，desc_ptr = 0
+    // SYNC 无参数，descPtr = 0
 
-    struct matmul_opcode_param { 
+    struct MATMULOpcodeParam { 
         // 除了DMA_LOAD/STORE，其他opcode的地址都是SRAM地址
-        uint32_t dst_addr;
-        uint32_t rhs_addr;
-        uint32_t lhs_addr;
+        uint32_t dstAddr;
+        uint32_t rhsAddr;
+        uint32_t lhsAddr;
         uint32_t M;
         uint32_t K;
         uint32_t N;
         uint32_t accumulate;
     }
 
-    struct elementwise_add_opcode_param { 
-        uint32_t dst_addr;
-        uint32_t rhs_addr;
-        uint32_t lhs_addr;
+    struct ElementwiseAddOpcodeParam { 
+        uint32_t dstAddr;
+        uint32_t rhsAddr;
+        uint32_t lhsAddr;
         uint32_t n;
     }
 
-    struct act_opcode_param {
-        uint32_t dst_addr;
-        uint32_t src_addr;
+    struct ActOpcodeParam {
+        uint32_t dstAddr;
+        uint32_t srcAddr;
         uint32_t n;
         uint32_t kind;
         union { //给其他激活传参数用
@@ -112,82 +112,82 @@
     }
 
     // 从15x32的tensor切出来15x31
-    struct dma_opcode_param LOAD_MATMUL_LHS{
-        sram_addr = 0x10000000;
-        ddr_addr = 0x80010000;
+    struct DMAOpcodeParam loadMatmulLhs{
+        sramAddr = 0x10000000;
+        ddrAddr = 0x80010000;
         rows = 15; 
         cols = 31;
-        src_stride = 32*2;
-        dst_stride = 31*2;
+        srcStride = 32*2;
+        dstStride = 31*2;
     }
 
-    struct dma_opcode_param LOAD_MATMUL_RHS{
-        sram_addr = 0x100003B0; //LOAD_MATMUL_LHS.sram_addr+15*31*2，然后再16字节对齐
-        ddr_addr = 0x800103C0; 
+    struct DMAOpcodeParam loadMatmulRhs{
+        sramAddr = 0x100003B0; //loadMatmulLhs.sramAddr+15*31*2，然后再16字节对齐
+        ddrAddr = 0x800103C0; 
         rows = 31; 
         cols = 63;
-        src_stride = 64*2;
-        dst_stride = 63*2;
+        srcStride = 64*2;
+        dstStride = 63*2;
     }
 
-    struct matmul_opcode_param MATMUL_PARAM{
-        dst_addr = 0x10001300; // LOAD_MATMUL_RHS.sram_addr+31*63*2，然后再16字节对齐
-        rhs_addr = LOAD_MATMUL_RHS.sram_addr;
-        lhs_addr = LOAD_MATMUL_LHS.sram_addr;
+    struct MATMULOpcodeParam matmulParam{
+        dstAddr = 0x10001300; // loadMatmulRhs.sramAddr+31*63*2，然后再16字节对齐
+        rhsAddr = loadMatmulRhs.sramAddr;
+        lhsAddr = loadMatmulLhs.sramAddr;
         M = 15;
         K = 31;
         N = 63;
         accumulate = 0;
     }
 
-    struct dma_opcode_param LOAD_ELEMENTWISE_ADD_RHS{
-        sram_addr = 0x10001A70; // MATMUL_PARAM.dst_addr+15*63*2，然后再16字节对齐
-        ddr_addr = 0x80011340;
+    struct DMAOpcodeParam loadElementwiseAddRhs{
+        sramAddr = 0x10001A70; // matmulParam.dstAddr+15*63*2，然后再16字节对齐
+        ddrAddr = 0x80011340;
         rows = 15; 
         cols = 63;
-        src_stride = 63*2;
-        dst_stride = 63*2;
+        srcStride = 63*2;
+        dstStride = 63*2;
     }
 
-    struct elementwise_add_opcode_param ELEMENTWISE_ADD_PARAM{ 
-        dst_addr = 0x100021E0; 
-        rhs_addr = MATMUL_PARAM.dst_addr;
-        lhs_addr = LOAD_ELEMENTWISE_ADD_RHS.sram_addr;
+    struct ElementwiseAddOpcodeParam elementwiseAddParam{ 
+        dstAddr = 0x100021E0; 
+        rhsAddr = matmulParam.dstAddr;
+        lhsAddr = loadElementwiseAddRhs.sramAddr;
         n = 15*63*2;
     }
 
-    struct act_opcode_param ACT_PARAM { 
-        dst_addr = 0x10002950; 
-        src_addr = ELEMENTWISE_ADD_PARAM.dst_addr;
+    struct ActOpcodeParam actParam { 
+        dstAddr = 0x10002950; 
+        srcAddr = elementwiseAddParam.dstAddr;
         n = 15*63*2;
         kind = Relu(0);
     }
 
-    struct dma_opcode_param STORE_ACT_DST{
-        sram_addr = ACT_PARAM.dst_addr;
-        ddr_addr = 0x80011AC0;
+    struct DMAOpcodeParam storeActDst{
+        sramAddr = actParam.dstAddr;
+        ddrAddr = 0x80011AC0;
         rows = 15; 
         cols = 63;
-        src_stride = 63*2;
-        dst_stride = 63*2;
+        srcStride = 63*2;
+        dstStride = 63*2;
     }
 
     // matmul+elementwise_add+relu
     // [15*31]*[31*63] = [15*63] -> [15*63] + [15*63] = [15*63] -> Relu([15*63]) = [15*63]
     // v0.1不排pipeline
     // 指令流放在命令队列区（0x80000000起），定长8字节，descriptor 也在命令队列区内
-    0x80000000: DMA_LOAD  LOAD_MATMUL_LHS
-    0x80000008: DMA_LOAD  LOAD_MATMUL_RHS
+    0x80000000: DMA_LOAD  loadMatmulLhs
+    0x80000008: DMA_LOAD  loadMatmulRhs
     0x80000010: SYNC      // 保证两个DMA_LOAD完毕
-    0x80000018: MATMUL    MATMUL_PARAM
+    0x80000018: MATMUL    matmulParam
     0x80000020: SYNC      // 保证MATMUL计算完毕
-    0x80000028: DMA_LOAD  LOAD_ELEMENTWISE_ADD_RHS
+    0x80000028: DMA_LOAD  loadElementwiseAddRhs
     0x80000030: SYNC      // 保证bias搬运完毕
-    0x80000038: ELEMENTWISE_ADD ELEMENTWISE_ADD_PARAM
+    0x80000038: ELEMENTWISE_ADD elementwiseAddParam
     0x80000040: SYNC      // 保证ELEMENTWISE_ADD计算完毕
-    0x80000048: ACT       ACT_PARAM
+    0x80000048: ACT       actParam
     0x80000050: SYNC      // 保证ACT计算完毕
-    0x80000058: DMA_STORE STORE_ACT_DST
+    0x80000058: DMA_STORE storeActDst
     0x80000060: SYNC      // 保证DMA_STORE完毕
 
 ## v0.2 规划（占位，待 H3 ops-audit 完成后冻结）

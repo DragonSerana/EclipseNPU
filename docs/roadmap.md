@@ -23,7 +23,7 @@
 1. cmodel 六条指令全部实现（DMA_LOAD/STORE、MATMUL、ELEMENTWISE_ADD、ACT、SYNC）
    - MATMUL 按 fp16 语义修对：half → fp32 块内累加 → half 写回（禁止 uint8 整数运算）；accumulate 0=覆盖 / 1=累加 两种模式
    - 跨 K-block 的 fp16 累加误差**文档化**（v0.2 由 fp32 ACC 解决，属已知行为）
-   - simulator.cpp：`compute_cycles()` 实现（MAC 吞吐 + DMA 带宽模型），cycle 计数是**核心交付物**，不是附属品
+   - simulator.cpp：`computeCycles()` 实现（MAC 吞吐 + DMA 带宽模型），cycle 计数是**核心交付物**，不是附属品
 2. 手写指令流（不经过编译器）跑通 matmul 128×128 = A×B（含 K 维分块 + accumulate）
    - done: 与 PyTorch 对拍通过（fp16 相对误差 < 1e-2）；cycle 计数可输出；误差模型文档齐备
    - 产出物：手写 matmul 对拍脚本 + 第一份 cycle 报告

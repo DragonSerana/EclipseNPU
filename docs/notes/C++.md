@@ -5,7 +5,7 @@
     构造函数要写在public,因为外部实例化要用 
     构造函数最好也在CPP实现
 
-    uint64_t compute_cycles(const Instruction &inst) const;
+    uint64_t computeCycles(const Instruction &inst) const;
     最后的const修饰this指针，表示不会修改类的成员变量
 
 2. std::deque
@@ -16,6 +16,6 @@
  
 4. const
     const 永远修饰它左边最近的那个东西；如果左边没有东西，才修饰右边最近的那个。而且最多修饰一个。
-    const dma_opcode_param* desc，左边没东西，那就修饰右边，也就是dma_opcode_param，而不是 dma_opcode_param*
-    dma_opcode_param* const desc，左边有东西，*，那也就说指针是const
-    dma_opcode_param  const* desc，左边有东西，dma_opcode_param，那也就说值是const
+    const DMAOpcodeParam* desc，左边没东西，那就修饰右边，也就是DMAOpcodeParam，而不是 DMAOpcodeParam*
+    DMAOpcodeParam* const desc，左边有东西，*，那也就说指针是const
+    DMAOpcodeParam  const* desc，左边有东西，DMAOpcodeParam，那也就说值是const

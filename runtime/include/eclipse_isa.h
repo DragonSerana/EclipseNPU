@@ -6,6 +6,7 @@
 
 namespace eclipse {
 
+// 内存映射与数据宽度（ISA 合同，与 docs/spec/isa-v0.1.md 一致）
 constexpr uint32_t SRAM_ADDR = 0x10000000;
 constexpr uint32_t DDR_ADDR = 0x80000000;
 
@@ -25,38 +26,38 @@ enum class OpCode : uint32_t {
 
 struct Instruction {
   OpCode opcode;
-  uint32_t desc_ptr;
+  uint32_t descPtr;
 };
 
-struct dma_opcode_param {
-  uint32_t sram_addr;
-  uint32_t ddr_addr;
+struct DMAOpcodeParam {
+  uint32_t sramAddr;
+  uint32_t ddrAddr;
   uint32_t rows;
   uint32_t cols;
-  uint32_t src_stride;
-  uint32_t dst_stride;
+  uint32_t srcStride;
+  uint32_t dstStride;
 };
 
-struct matmul_opcode_param {
-  uint32_t dst_addr;
-  uint32_t rhs_addr;
-  uint32_t lhs_addr;
+struct MATMULOpcodeParam {
+  uint32_t dstAddr;
+  uint32_t rhsAddr;
+  uint32_t lhsAddr;
   uint32_t M;
   uint32_t K;
   uint32_t N;
   uint32_t accumulate;
 };
 
-struct elementwise_add_opcode_param {
-  uint32_t dst_addr;
-  uint32_t rhs_addr;
-  uint32_t lhs_addr;
+struct ElementwiseAddOpcodeParam {
+  uint32_t dstAddr;
+  uint32_t rhsAddr;
+  uint32_t lhsAddr;
   uint32_t n;
 };
 
-struct act_opcode_param {
-  uint32_t dst_addr;
-  uint32_t src_addr;
+struct ActOpcodeParam {
+  uint32_t dstAddr;
+  uint32_t srcAddr;
   uint32_t n;
   uint32_t kind;
   union {
