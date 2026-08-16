@@ -25,10 +25,20 @@ public:
   /// @return 该地址的字节指针，越界时 assert
   uint8_t *ddr(uint32_t addr);
 
+  /// const 版本，只读访问（computeCycles 等 const 成员使用）
+  /// @param addr DDR 地址（DDR_ADDR 起的偏移）
+  /// @return 该地址的字节指针，越界时 assert
+  const uint8_t *ddr(uint32_t addr) const;
+
   /// 取 SRAM 地址对应的字节指针
   /// @param addr SRAM 地址（SRAM_ADDR 起的偏移）
   /// @return 该地址的字节指针，越界时 assert
   uint8_t *sram(uint32_t addr);
+
+  /// const 版本，只读访问
+  /// @param addr SRAM 地址（SRAM_ADDR 起的偏移）
+  /// @return 该地址的字节指针，越界时 assert
+  const uint8_t *sram(uint32_t addr) const;
 
   /// 从 SRAM 读一个 fp16 元素并解码为 float
   /// @param addr 元素字节地址（含偏移）

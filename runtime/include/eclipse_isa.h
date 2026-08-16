@@ -6,6 +6,7 @@
 
 namespace eclipse {
 
+// Memory Define
 constexpr uint32_t SRAM_ADDR = 0x10000000;
 constexpr uint32_t DDR_ADDR = 0x80000000;
 
@@ -13,6 +14,12 @@ constexpr uint32_t SRAM_SIZE = 0x80000;
 constexpr uint32_t DDR_SIZE = 0x40000000;
 
 constexpr size_t DTYPE_SIZE = 2;
+
+// Cycle Define
+constexpr uint32_t DMA_BYTES_PER_CYCLE = 32;
+constexpr uint32_t DMA_FIXED_OVERHEAD = 16;
+constexpr uint32_t MAC_PER_CYCLE = 256;
+constexpr uint32_t ELEM_PER_CYCLE = 128;
 
 enum class OpCode : uint32_t {
   DMA_LOAD,

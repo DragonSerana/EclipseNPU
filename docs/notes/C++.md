@@ -19,3 +19,9 @@
     const DMAParam* desc，左边没东西，那就修饰右边，也就是DMAParam，而不是 DMAParam*
     DMAParam* const desc，左边有东西，*，那也就说指针是const
     DMAParam  const* desc，左边有东西，DMAParam，那也就说值是const
+
+    uint64_t computeCycles(const Instruction &inst) const;
+    最后的const作用于this指针，这是一个常量成员函数。该函数不会修改调用它的那个对象的任何成员变量
+
+5. ceil
+    返回大于或等于给定数字的最小整数，向上舍入
