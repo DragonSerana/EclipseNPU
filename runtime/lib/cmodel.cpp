@@ -1,6 +1,7 @@
 #include "cmodel.h"
 #include "eclipse_assert.h"
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 using namespace eclipse;
@@ -125,9 +126,18 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
   case OpCode::DMA_LOAD:
   case OpCode::DMA_STORE: {
     const auto *desc = reinterpret_cast<const DMAParam *>(ddr(inst.descPtr));
-    // 简化：未建模 16B 突发对齐损失（spec：非 16B 对齐地址需额外突发。TODO
-    uint32_t bytes = desc->rows * desc->cols * DTYPE_SIZE;
-    cycles = ceil((float)bytes / DMA_BYTES_PER_CYCLE) + DMA_FIXED_OVERHEAD;
+    const uint32_t stride =
+        (inst.opcode == OpCode::DMA_LOAD) ? desc->srcStride : desc->dstStride;
+    const uint32_t rowBytes = desc->cols * DTYPE_SIZE;
+    uint64_t bursts = 0;
+    for (uint32_t i = 0; i < desc->rows; i++) {
+      const uint32_t start = desc->ddrAddr + stride * i;
+      // 结尾所在块 - 开头所在块
+      bursts += (start + rowBytes - 1) / DMA_BURST_BYTES -
+                start / DMA_BURST_BYTES + 1;
+    }
+    cycles = ceil(((float)bursts * DMA_BURST_BYTES) / DMA_BYTES_PER_CYCLE) +
+             DMA_FIXED_OVERHEAD;
     break;
   }
   case OpCode::MATMUL: {

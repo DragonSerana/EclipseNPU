@@ -18,6 +18,7 @@ constexpr size_t DTYPE_SIZE = 2;
 // Cycle Define
 constexpr uint32_t DMA_BYTES_PER_CYCLE = 32;
 constexpr uint32_t DMA_FIXED_OVERHEAD = 16;
+constexpr uint32_t DMA_BURST_BYTES = 16;
 constexpr uint32_t MAC_PER_CYCLE = 256;
 constexpr uint32_t ELEM_PER_CYCLE = 128;
 

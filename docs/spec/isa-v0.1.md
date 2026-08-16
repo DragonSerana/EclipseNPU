@@ -9,7 +9,7 @@
         0x80000000 - 0x8000FFFF  命令队列区（64KB）：指令流 + descriptor，host 写入，NPU 取指
         0x80010000 - 0xBFFFFFFF  数据区：tensor 数据
     字节对齐，tensor在内存上16字节对齐，编译器保证sramAddr/ddrAddr都是16字节对齐。
-    内存控制器按照16Byte突发，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
+    内存控制器按照16Byte突发，突发必须是16的倍数，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
     计算指令（MATMUL/ELEMENTWISE/ACT）的操作数在 SRAM 中必须 packed（行连续）存储；只有 DMA 支持 stride。
     DDR中，input tensor是啥样就啥样，SRAM中必须是packed。
 
