@@ -1,6 +1,5 @@
 #include "cmodel.h"
 #include "eclipse_assert.h"
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -35,7 +34,7 @@ const uint8_t *CModel::sram(uint32_t addr) const {
   return sram_.data() + (addr - SRAM_ADDR);
 }
 
-float CModel::readFP16(uint32_t addr) {
+float CModel::readFP16(uint32_t addr) const {
   return fp16ToFp32(loadU16(sram(addr)));
 }
 
@@ -136,14 +135,13 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
       bursts += (start + rowBytes - 1) / DMA_BURST_BYTES -
                 start / DMA_BURST_BYTES + 1;
     }
-    // TODO ceil改成整数除法
-    cycles = ceil(((float)bursts * DMA_BURST_BYTES) / DMA_BYTES_PER_CYCLE) +
+    cycles = ceilDiv(bursts * DMA_BURST_BYTES, DMA_BYTES_PER_CYCLE) +
              DMA_FIXED_OVERHEAD;
     break;
   }
   case OpCode::MATMUL: {
     const auto *desc = reinterpret_cast<const MatmulParam *>(ddr(inst.descPtr));
-    cycles = ceil((float)desc->M * desc->N / MAC_PER_CYCLE) * desc->K;
+    cycles = ceilDiv(desc->M * desc->N, MAC_PER_CYCLE) * desc->K;
     break;
   }
   // 这两个指令使用SIMD引擎
@@ -154,7 +152,7 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
       n = reinterpret_cast<const EwiseAddParam *>(ddr(inst.descPtr))->n;
     else
       n = reinterpret_cast<const ActParam *>(ddr(inst.descPtr))->n;
-    cycles = ceil((float)n / ELEM_PER_CYCLE);
+    cycles = ceilDiv(n, ELEM_PER_CYCLE);
     break;
   }
   case OpCode::SYNC: {

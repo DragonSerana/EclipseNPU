@@ -7,6 +7,9 @@
 
 namespace eclipse {
 
+/// 整数向上取整除法：ceil(a / b)
+inline uint64_t ceilDiv(uint64_t a, uint64_t b) { return (a + b - 1) / b; }
+
 /// 对芯片的模拟：DDR/SRAM 内存模型 + 指令执行
 class CModel {
 
@@ -43,7 +46,7 @@ public:
   /// 从 SRAM 读一个 fp16 元素并解码为 float
   /// @param addr 元素字节地址（含偏移）
   /// @return 解码后的 fp32 值
-  float readFP16(uint32_t addr);
+  float readFP16(uint32_t addr) const;
 
   /// 把 float 舍入（RNE）为 fp16 写入 SRAM
   /// @param addr 元素字节地址（含偏移）

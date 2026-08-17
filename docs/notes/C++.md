@@ -25,3 +25,11 @@
 
 5. ceil
     返回大于或等于给定数字的最小整数，向上舍入
+
+6. queue_取值
+    先move再删除适用于大资源，堆指针防止深拷贝。对于纯数据不需要std::move
+    Instruction inst = std::move(queue_.front());
+    ->
+    Instruction inst = queue_.front();
+    
+    queue_.pop_front();
