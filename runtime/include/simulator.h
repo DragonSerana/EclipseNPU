@@ -8,17 +8,26 @@
 
 namespace eclipse {
 
+struct CycleEntry {
+  Instruction inst;
+  uint64_t cycles;
+};
+
 class Simulator {
 private:
   CModel cmodel_;
-  std::deque<Instruction> queue_; // 指令队列
+  std::deque<Instruction> queue_;
   uint64_t totalCycles_ = 0;
+  std::vector<CycleEntry> log_;
 
 public:
-  bool writeDdr(uint32_t addr, const void *buffer, size_t size);
-  bool push();      // 将指令压入指令队列
-  bool run();       // 开始执行指令
-  uint64_t cycle(); // 统计cycle数据
+  void writeDdr(uint32_t addr, const void *buffer, size_t size);
+  void push(const Instruction &inst);
+  void run();
+  uint64_t totalCycles() const;
+  const std::vector<CycleEntry> &cycleLog() const;
+  CModel &cmodel();
+  const CModel &cmodel() const;
 };
 
 } // namespace eclipse

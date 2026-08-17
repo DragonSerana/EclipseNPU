@@ -136,6 +136,7 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
       bursts += (start + rowBytes - 1) / DMA_BURST_BYTES -
                 start / DMA_BURST_BYTES + 1;
     }
+    // TODO ceil改成整数除法
     cycles = ceil(((float)bursts * DMA_BURST_BYTES) / DMA_BYTES_PER_CYCLE) +
              DMA_FIXED_OVERHEAD;
     break;
