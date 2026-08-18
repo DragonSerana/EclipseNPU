@@ -30,4 +30,4 @@ include_directories(${ECLIPSE_BINARY_DIR})
 
 add_subdirectory(runtime)
 add_subdirectory(compiler)
-# add_subdirectory(tests)
+add_subdirectory(tests)

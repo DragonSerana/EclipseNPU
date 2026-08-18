@@ -1,0 +1,2 @@
+add_executable(matmul_golden matmul_golden.cpp)
+target_link_libraries(matmul_golden PRIVATE EclipseRuntime)
