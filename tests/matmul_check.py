@@ -4,6 +4,7 @@
 golden 优先用 PyTorch fp16（fp32 累加，与 cmodel 语义一致）；
 没有 torch 时退化为 numpy fp64 真值（更严格）。
 """
+import os
 import subprocess
 import sys
 
@@ -16,7 +17,9 @@ try:
 except ImportError:
     HAS_TORCH = False
 
-DRIVER = "build/bin/matmul_golden"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_DIR = os.path.dirname(os.path.abspath(__file__))
+DRIVER = os.path.join(ROOT, "build", "bin", "matmul_golden")
 M = N = K = 128
 TOL = 1e-2
 
@@ -26,11 +29,14 @@ def main():
     a = rng.standard_normal((M, K)).astype(np.float16)
     b = rng.standard_normal((K, N)).astype(np.float16)
 
-    a.tofile("a.raw")
-    b.tofile("b.raw")
-    subprocess.run([DRIVER, "a.raw", "b.raw", "c.raw"], check=True)
+    a_path = os.path.join(RAW_DIR, "a.raw")
+    b_path = os.path.join(RAW_DIR, "b.raw")
+    c_path = os.path.join(RAW_DIR, "c.raw")
+    a.tofile(a_path)
+    b.tofile(b_path)
+    subprocess.run([DRIVER, a_path, b_path, c_path], check=True)
 
-    c = np.fromfile("c.raw", dtype=np.float16).reshape(M, N)
+    c = np.fromfile(c_path, dtype=np.float16).reshape(M, N)
 
     if HAS_TORCH:
         ta, tb = torch.from_numpy(a), torch.from_numpy(b)
