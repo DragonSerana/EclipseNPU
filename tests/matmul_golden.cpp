@@ -1,5 +1,6 @@
 #include "simulator.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 
@@ -21,14 +22,15 @@ static constexpr uint32_t A_DDR = DDR_ADDR + 0x10000;
 static constexpr uint32_t B_DDR = DDR_ADDR + 0x20000;
 static constexpr uint32_t C_DDR = DDR_ADDR + 0x30000;
 
-static void pushDmaLoad(Simulator &sim, uint32_t sramAddr, uint32_t ddrAddr) {
+static void pushDmaLoad(Simulator &sim, uint32_t sramAddr, uint32_t ddrAddr, 
+    uint32_t cow, uint32_t col, uint32_t srcStride, uint32_t dstStride) {
   DMAParam desc;
   desc.sramAddr = sramAddr;
   desc.ddrAddr = ddrAddr;
-  desc.rows = 128;
-  desc.cols = 128;
-  desc.srcStride = 128 * DTYPE_SIZE;
-  desc.dstStride = desc.srcStride;
+  desc.rows = cow;
+  desc.cols = col;
+  desc.srcStride = srcStride;
+  desc.dstStride = dstStride;
   const uint32_t descAddr = nextDescAddr();
   sim.writeDDR(descAddr, &desc, sizeof(desc));
   sim.push(Instruction{OpCode::DMA_LOAD, descAddr});
@@ -42,6 +44,20 @@ static void pushMatmulBlock(Simulator &sim, uint32_t accumulate) {
   desc.rhsAddr = B_SRAM;
   desc.accumulate = accumulate;
   desc.K = 128;
+  desc.M = 128;
+  desc.N = 128;
+  const uint32_t descAddr = nextDescAddr();
+  sim.writeDDR(descAddr, &desc, sizeof(desc));
+  sim.push(Instruction{OpCode::MATMUL, descAddr});
+}
+
+static void pushMatmulBlockTile(Simulator &sim, uint32_t accumulate, uint32_t K) {
+  MatmulParam desc;
+  desc.dstAddr = C_SRAM;
+  desc.lhsAddr = A_SRAM;
+  desc.rhsAddr = B_SRAM;
+  desc.accumulate = accumulate;
+  desc.K = K;
   desc.M = 128;
   desc.N = 128;
   const uint32_t descAddr = nextDescAddr();
@@ -86,11 +102,13 @@ int main(int argc, char **argv) {
   Simulator sim;
   sim.writeDDR(A_DDR, aBytes.data(), aBytes.size());
   sim.writeDDR(B_DDR, bBytes.data(), bBytes.size());
-
-  pushDmaLoad(sim, A_SRAM, A_DDR);
-  pushDmaLoad(sim, B_SRAM, B_DDR);
-  sim.push(Instruction{OpCode::SYNC, 0});
-  pushMatmulBlock(sim, 0);
+  int tile = 8;
+  for(int i = 0; i < tile; i++) {
+    pushDmaLoad(sim, A_SRAM, A_DDR+i*128/tile*DTYPE_SIZE, 128, 128/tile, 128*DTYPE_SIZE, 128/tile*DTYPE_SIZE);
+    pushDmaLoad(sim, B_SRAM, B_DDR+i*128/tile*128*DTYPE_SIZE, 128/tile, 128, 128*DTYPE_SIZE, 128*DTYPE_SIZE);
+    sim.push(Instruction{OpCode::SYNC, 0});
+    pushMatmulBlockTile(sim, (i==0)?0:1, 128/tile);
+  }
   sim.push(Instruction{OpCode::SYNC, 0});
   pushDmaStore(sim, C_SRAM, C_DDR);
 
