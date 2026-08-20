@@ -54,6 +54,8 @@
     违反时 simulator 直接 assert（真实硬件不检查，只会静默算错）。
     cmodel 支持任意 M,N,K≤1024；16 对齐仅为性能；padding 是编译器的可选优化
     dst和src暂时不支持inplace，即输入输出共用一块内存
+    cmodel 禁止 dst/lhs/rhs 任意两块重叠（比硬件合法集保守；例如 A×A 合法但被拒），
+    该保守行为在 dialect verifier 保持一致。
 
     数值语义：块内 fp32 累加，写回 fp16；accumulate=1 读回的 dst 是 fp16，
     跨 K-block 的累加误差由软件承担（已知行为，v0.2 引入 fp32 累加区解决）。

@@ -4,13 +4,14 @@ EclipseNPU is a full-stack NPU design project: instruction set, MLIR-based compi
 
 ## Status
 
-Phase 1 (ISA v0.1 + cmodel/simulator) is in progress.
+Phase 1 (ISA v0.1 + cmodel/simulator) is complete; Phase 2 (toolchain) is in progress.
 
 - ISA v0.1 frozen — see [docs/spec/isa-v0.1.md](docs/spec/isa-v0.1.md)
-- cmodel: `DMA_LOAD` / `DMA_STORE` implemented; `MATMUL` in development
-- simulator: cycle model (MAC throughput + DMA bandwidth) not yet implemented
-- compiler: skeleton only (Eclipse dialect, `eclipse-opt` stub)
-- tests: lit tests present, not yet wired into the main build
+- cmodel: all six instructions implemented (DMA_LOAD/STORE, MATMUL, ELEMENTWISE_ADD, ACT, SYNC); MATMUL uses fp16 in → fp32 block accumulation → fp16 write-back
+- simulator: sequential instruction queue with cycle accounting (`computeCycles`: MAC throughput + DMA bandwidth model)
+- verification: hand-written 128×128 matmul instruction stream (K-tiled, accumulate) checked against PyTorch fp16 / fp64 — see [docs/spec/accuracy.md](docs/spec/accuracy.md) and [docs/cycle-report-h1.md](docs/cycle-report-h1.md)
+- compiler: skeleton only (Eclipse dialect, `eclipse-opt` stub); H2 = 6 leaf ops + linalg lowering chain + lit wired into the build
+- tests: `matmul_golden` built by the main build; lit tests present, not yet run under CI
 
 The milestone plan is in [docs/roadmap.md](docs/roadmap.md).
 
