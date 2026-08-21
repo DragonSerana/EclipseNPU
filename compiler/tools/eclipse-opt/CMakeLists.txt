@@ -7,5 +7,9 @@ target_link_libraries(eclipse-opt PRIVATE
   MLIRSupport
   MLIRParser
   MLIRAsmParser
+  MLIROptLib
+  MLIRPass
+  MLIRArithDialect
+  MLIRFuncDialect
   EclipseDialect
 )

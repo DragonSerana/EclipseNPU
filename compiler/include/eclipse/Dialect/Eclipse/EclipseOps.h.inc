@@ -1,0 +1,7 @@
+#ifndef ECLIPSE_DIALECT_ECLIPSEOPS_H_INC
+#define ECLIPSE_DIALECT_ECLIPSEOPS_H_INC
+
+#include "EclipseOps.h.generated.inc"
+
+#endif // ECLIPSE_DIALECT_ECLIPSEOPS_H_INC
+

@@ -192,6 +192,9 @@
     0x80000058: DMA_STORE storeActDst
     0x80000060: SYNC      // 保证DMA_STORE完毕
 
+## cycle模型
+    当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
+
 ## v0.2 规划（占位，待 H3 ops-audit 完成后冻结）
 
     目标模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE；备选 TinyLlama 1.1B）。
