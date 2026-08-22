@@ -8,6 +8,7 @@ export PATH="${ECLIPSE_NPU_ROOT}/build/bin:${PATH}"
 
 function Eclipse-build() {
     echo "[EclipseNPU] Starting build..."
+    mkdir -p "${ECLIPSE_NPU_ROOT}/build"
     pushd "${ECLIPSE_NPU_ROOT}/build" > /dev/null
     cmake ..
     cmake --build . -j$(nproc)
