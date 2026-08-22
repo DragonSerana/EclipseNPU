@@ -3,3 +3,10 @@
 
 2. cmodel和simulator
     cmodel是对芯片的模拟，simulator是装着芯片的整个系统，持有cmodel，x86操作芯片的接口。
+
+3. memref
+    全称memory reference，类似指针，不过还携带着 shape/布局/类型的信息
+    eclipse.dma_load %a, %aView
+    : memref<128x16xf16, 0>, memref<128x16xf16, strided<[128,1]>, 1>
+    %a目标地址，%aView原地址，memref<128x16xf16, 0>，目标地址在SRAM，shape是128x16，type是f16。
+    memref<128x16xf16, strided<[128,1]>, 1>，ddr多了一个stride信息，代表h到h+1=128，w到w+1=1

@@ -8,7 +8,8 @@ add_public_tablegen_target(EclipseOpsInc)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_mlir_dialect_library(EclipseDialect
-  Dialect.cpp
+  EclipseDialect.cpp
+  Ops/DmaLoad.cpp
   DEPENDS
   EclipseOpsInc
 )

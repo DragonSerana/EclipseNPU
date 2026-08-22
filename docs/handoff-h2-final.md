@@ -244,3 +244,78 @@ lit 正例：6 op + sram 各一条 parse 通过；负例（expected-error）：M
 - LLVM/MLIR 源码（命名/风格/参考模板）：`/home/serana/mlir/llvm-project`（toy 教程、GPU dialect 的 memref 型 op 是 §6 op 的参考）；编码规范以其 `llvm/docs/CodingStandards.rst` 为准；commit `a67efda258fa`（23.0.0git）；
 - 工具链：Ubuntu、g++ 15、C++17；
 - git：remote `git@github.com:DragonSerana/EclipseNPU.git`；当前 HEAD `3bf970f`，Readme.md 有未提交改动，`docs/` 下五份规划/移交文件未跟踪——开工前建议：本文件提交入库，四份被取代文件按惯例删除（用户操作，AI 不要代删）。
+
+
+## 12. 工具链设计
+直接给结论，再展开：要自己写的 pass 只有 3 个，复用上游的只有 3 个，整个栈刻意保持很浅。这条工具链的“后端”不是 LLVM，是 .easm 发射器——这决定了 pass 清单的形状。
+一、全链路一张图
+
+输入 MLIR (手写)                bufferize (上游)              convert (我们)                allocate (我们)              emit (我们)
+func/linalg/tensor/arith  →  func/linalg/memref/arith  →  eclipse/scf/memref/arith  →  eclipse(+sram)/scf  →  .easm 文本
+     linalg.matmul              linalg on memrefs          dma/matmul/sync + K循环       地址具体化+合同检查        静态展开+序列化
+
+每个箭头处 dialect 的进出，就是你要的“用到哪几个 dialect”的答案，下面有总表。
+二、复用上游的 pass（只有这 3 个，别多引）
+pass	干什么	备注
+--one-shot-bufferize="bufferize-function-boundaries"	tensor → memref，函数边界一起换	唯一真正的核心依赖。H2.1 Day 7 的实验就是看它吐出的 memref 形态来定 pattern
+--canonicalize	规范化 + 常量折叠	清道夫，convert 前后各跑一次
+--cse	公共子表达式消除	同上
+
+就这些。--convert-linalg-to-loops 只当学习参考用（看上游怎么写 conversion pattern），不进管线。
+三、自己写的 3 个 pass（每个对应一个关注点：调度 / 摆放 / 编码）
+
+1. convert-linalg-to-eclipse（调度：什么时候算、什么时候搬）
+
+ConversionPass + 一组 RewritePattern，消费 bufferized linalg，产出 eclipse op + scf.for：
+
+    linalg.matmul（memref）→ 剥首块（acc=0）+ scf.for 1..7（acc=1，无 iter_args，dst 复用）+ 每块 memref.subview（DDR 侧，天然带 stride）+ memref.alloc(space 0)（SRAM tile）+ eclipse.dma_load×2 + eclipse.sync + eclipse.matmul，尾接 eclipse.dma_store。tiling 就在这个 pattern 里（D2 决策，tile-k 是 pass option），没有独立 tiling pass；
+    linalg.add → eclipse.elementwise_add；linalg.generic（body 是 arith.maxf(x, 0)，恒等 indexing map）→ eclipse.act；
+    memref.copy → eclipse.dma_load/store（按方向）；
+    fill+alloc 消除：linalg.fill(zero, alloc) 只被 matmul 的 outs 用 → 三个一起删，dst 直连新 SRAM buffer。这里藏着一个必须写进合同的字义细节：linalg.matmul 的语义是 C_init + A@B，我们按“覆盖”编译（首块 acc=0），入口 IR 约定 C 是纯输出——不写清楚这就是将来一个晚上的坑；
+    顺带把 func 参数类型改写为 space 1（DDR ABI）。
+
+2. eclipse-allocate（摆放：数据在 SRAM 哪里）
+
+    memref.alloc(space 0) → eclipse.sram {addr = 常量}；func 参数挂 eclipse.ddr_addr（0x80010000/0x20000/0x30000）；
+    pass option layout=golden-mirror|bump：镜像布局复刻 golden 三 buffer（逐条 diff 的前提），bump 是通用 16B 对齐顺序分配；
+    地址级合同检查全在这里：16B 对齐、SRAM 驻留 ≤512KB、MATMUL 三块两两不重叠——这些只有地址具体化后才查得了（D4 分层的落点）。
+
+一个面试级的类比：这个 pass 本质上是把 SRAM 当寄存器堆做分配——golden-mirror 布局 ≈ 固定寄存器分配，bump ≈ 顺序分配器，H2.3 的 lifetime 重用 ≈ 活跃区间分析。三关注点里它对应后端的“寄存器分配”阶段。
+
+3. eclipse-to-easm（编码：怎么序列化成指令流）
+
+严格说这不是 pass，是发射器（做成 pass 或 mlir-translate 都行）：
+
+    静态展开 scf.for（D8：本版上游没有 scf unroll pass，实测过；归纳变量代常量，逐迭代求值 subview 偏移 → 具体 ddrAddr）；
+    descriptor 槽位分配 + 输出文本 .easm。
+
+三个 pass 各管一件事，所以 allocate 不并进 convert——镜像/bump 布局要可切换、地址合同检查要隔离，合并了这两个能力就搅在一起了。
+四、Dialect 总表
+Dialect	角色	从哪进	到哪出
+func	函数容器/ABI	输入	到底（参数被改成 space 1）
+tensor	输入张量	输入	bufferize 后消失
+linalg	计算入口（matmul/add/generic）	输入	convert 后消失
+arith	常量、maxf/addf、循环内 index 运算	输入	发射器消费常量
+memref	alloc/subview/copy	bufferize 产出	allocate（alloc→sram）/发射器（subview 折叠成地址）
+scf	K 分块循环	convert 产出	发射器展开时消失
+eclipse	6 leaf op + sram	convert 产出	到底，.easm 的 IR 镜像
+
+明确不进管线的：affine（用 scf，linalg 自家降 loops 也用 scf；上游的 --affine-loop-unroll 可以在 H2.2 当实验试一把——如果我们的 IR 用 affine.for 能过它的检查，发射器里的自写展开就能省掉，值得一天时间验证，失败就退回 D8）；vector（SIMD 语义已经在 EWISE leaf op 里，v0.1 不做 IR 级向量化）；cf/llvm（根本不往下降——我们没有通用 CPU 后端，指令流队列就是后端，这是和 GPU 工具链最大的形态差异）；math（exp 是 v0.2 LUT 的事）；transform（H2.3 可选试点，不是依赖）；tosa/stablehlo（D1 已否决）。
+五、完整管线（将来就是 lit 里的“管线快照”测试）
+bash
+
+eclipse-opt matmul.mlir \
+  --one-shot-bufferize="bufferize-function-boundaries" \
+  --canonicalize --cse \
+  --convert-linalg-to-eclipse="tile-k=16" \
+  --eclipse-allocate="layout=golden-mirror" \
+  --eclipse-to-easm="o=matmul.easm"
+
+lit 切分跟着 pass 走：convert 一个测试目录（每 pattern 正反例）、allocate 一个（布局 + 地址合同负例）、e2e 管线快照一个（golden-mirror 配置下 .easm 与 golden v2 trace diff 为空）。
+六、预览：后面还会长出来的 pass
+
+    H2.3：elementwise 融合（C_SRAM 不落 DDR 直连 ewise/act，pattern 级识别即可）；transform dialect 试点；
+    v0.2 双缓冲：DMA_LOAD_ASYNC + WAIT 进 ISA 后，会多一个真正的调度 pass（重排 eclipse op 用计算掩盖搬运）——那才是 transform dialect 的主场，也是这个工具链里最像 GPU pipeliner 的东西；
+    v0.2 padding/swizzle：等 SRAM bank 模型把“哪种 tile 形状罚多少”算清楚后，convert 的 tile 参数选择才有依据。
+
+这套东西（3 pass + 7 dialect 的浅栈）值得在你开始 H2.0 时原样沉淀进 docs/notes/compiler-stack.md 当第一节——要我现在写进去说一声。
