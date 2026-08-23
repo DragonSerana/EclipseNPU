@@ -25,3 +25,7 @@ config.substitutions.append(
     ("%FileCheck",
      os.environ.get("FILECHECK",
                     "/home/serana/mlir/llvm-project/build/bin/FileCheck")))
+config.substitutions.append(
+    ("%not",
+     os.environ.get("NOT",
+                    "/home/serana/mlir/llvm-project/build/bin/not")))
