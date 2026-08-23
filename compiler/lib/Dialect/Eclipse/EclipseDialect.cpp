@@ -6,6 +6,8 @@ MLIR_DEFINE_EXPLICIT_TYPE_ID(::mlir::eclipse::EclipseDialect)
 using namespace mlir;
 using namespace mlir::eclipse;
 
+#include "EclipseOpsEnums.cpp.inc"
+
 #define GET_OP_CLASSES
 #include "EclipseOps.cpp.inc"
 

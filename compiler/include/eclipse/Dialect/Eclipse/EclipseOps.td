@@ -1,6 +1,7 @@
 #ifndef ECLIPSE_OPS
 #define ECLIPSE_OPS
 
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 
 def Eclipse_Dialect : Dialect {
@@ -22,14 +23,11 @@ def Eclipse_DDRMemRef : ConfinedType<
     [CPred<"llvm::cast<::mlir::MemRefType>($_self).getMemorySpaceAsInt() == 1">],
     "2D f16 memref in DDR", "::mlir::MemRefType">;
 
-
-// 六个 leaf op 的定义将在这里逐个补充：
-//   eclipse.dma_load
-//   eclipse.dma_store
-//   eclipse.matmul
-//   eclipse.elementwise_add
-//   eclipse.act
-//   eclipse.sync
+def Eclipse_ActKind_RELU : I32EnumAttrCase<"RELU", 0, "relu">;
+def Eclipse_ActKindAttr : I32EnumAttr<"ActKind", "Eclipse activation kind",
+    [Eclipse_ActKind_RELU]> {
+  let cppNamespace = "::mlir::eclipse";
+}
 
 def Eclipse_DmaLoadOp : Eclipse_Op<"dma_load"> {
   let summary = "Copy a 2D tile from DDR to SRAM";
@@ -74,6 +72,87 @@ def Eclipse_DmaStoreOp : Eclipse_Op<"dma_store"> {
 
   let assemblyFormat = "$src `,` $dst attr-dict `:` type($src) `,` type($dst)";
 }
+
+def Eclipse_MatmulOp : Eclipse_Op<"matmul"> {
+  let summary = "Eclipse NPU matrix multiply";
+  let description = [{
+    `eclipse.matmul` corresponds to the MATMUL instruction in the ISA.
+    It computes `dst = lhs * rhs` (or accumulates into `dst` when
+    `accumulate` is true).  All operands are SRAM memrefs; the shapes must be
+    lhs(MxK), rhs(KxN), dst(MxN).
+  }];
+
+  let arguments = (ins
+    Eclipse_SRAMMemRef:$lhs,
+    Eclipse_SRAMMemRef:$rhs,
+    Eclipse_SRAMMemRef:$dst,
+    BoolAttr:$accumulate
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = "$lhs `,` $rhs `,` $dst attr-dict `:` type($lhs) `,` type($rhs) `,` type($dst)";
+}
+
+def Eclipse_EwiseAddOp : Eclipse_Op<"elementwise_add"> {
+  let summary = "Eclipse NPU elementwise add";
+  let description = [{
+    `eclipse.elementwise_add` corresponds to the ELEMENTWISE_ADD instruction
+    in the ISA.  It adds `n` fp16 elements: `dst = lhs + rhs`.  All operands
+    are SRAM memrefs with the same shape.
+  }];
+
+  let arguments = (ins
+    Eclipse_SRAMMemRef:$lhs,
+    Eclipse_SRAMMemRef:$rhs,
+    Eclipse_SRAMMemRef:$dst
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = "$lhs `,` $rhs `,` $dst attr-dict `:` type($lhs) `,` type($rhs) `,` type($dst)";
+}
+
+def Eclipse_ActOp : Eclipse_Op<"act"> {
+  let summary = "Eclipse NPU activation";
+  let description = [{
+    `eclipse.act` corresponds to the ACT instruction in the ISA.
+    It applies the activation selected by `kind` to `n` fp16 elements:
+    `dst = act(src)`.  Both operands are SRAM memrefs with the same shape.
+    v0.1 only supports RELU (kind = 0).
+  }];
+
+  let arguments = (ins
+    Eclipse_SRAMMemRef:$src,
+    Eclipse_SRAMMemRef:$dst,
+    Eclipse_ActKindAttr:$kind
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = "$src `,` $dst attr-dict `:` type($src) `,` type($dst)";
+}
+
+def Eclipse_SyncOp : Eclipse_Op<"sync"> {
+  let summary = "Eclipse NPU fence";
+  let description = [{
+    `eclipse.sync` corresponds to the SYNC instruction in the ISA.  It is a
+    fence that waits for all previously issued instructions to finish.
+  }];
+
+  let arguments = (ins);
+  let results = (outs);
+
+  let hasVerifier = 1;
+  let assemblyFormat = "attr-dict";
+}
+
 
 
 #endif // ECLIPSE_OPS

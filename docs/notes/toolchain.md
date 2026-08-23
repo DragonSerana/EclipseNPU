@@ -14,9 +14,10 @@
 4. type.getLayout().isIdentity();
     判断布局是否是恒等，memref定义是否函数stride
 
-5. Affine Map
+5. Affine Dialect
     它是用来把多维数组的索引（比如 [i, j]），翻译成内存的一维物理地址的数学公式。
     比如每行有16个元素，那[i,j]->(i*16+j)
+    把tensor中每个元素的位置具象到内存地址怎么算
 
 6. 行主序
     strided<[128, 1]>是 行主序。H的 stride是 128。C语言默认的多维数组存储方式，先排行，再排列
@@ -28,3 +29,7 @@
     ArrayRef<int64_t> strideVals = *strides;
 
     getStrides返回Optional<ArrayRef<int64_t>>，*strides就是打开 Optional这个封装.
+
+8. linalg dialect
+    LINEar ALGebra，线性代数
+    本质其实是数学上的矩阵乘法，这阶段可以进行数学上就成立的变换，硬件无关
