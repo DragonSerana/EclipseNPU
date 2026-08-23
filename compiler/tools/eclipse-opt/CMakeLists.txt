@@ -11,5 +11,8 @@ target_link_libraries(eclipse-opt PRIVATE
   MLIRPass
   MLIRArithDialect
   MLIRFuncDialect
+  MLIRLinalgDialect
+  MLIRMemRefDialect
   EclipseDialect
+  EclipseConversionPasses
 )
