@@ -17,8 +17,8 @@ function Eclipse-build() {
 }
 
 function Eclipse-test() {
-    echo "[EclipseNPU] Running lit tests..."
-    cmake --build "${ECLIPSE_NPU_ROOT}/build" --target check-eclipse -j$(nproc)
+    echo "[EclipseNPU] Running tests..."
+    cmake --build "${ECLIPSE_NPU_ROOT}/build" --target check-eclipse check-golden -j$(nproc)
     echo "[EclipseNPU] Tests finished."
 }
 

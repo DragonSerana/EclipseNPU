@@ -9,11 +9,11 @@ Phase 1 (ISA v0.1 + cmodel/simulator) is complete; Phase 2 (toolchain) is in pro
 - ISA v0.1 frozen — see [docs/spec/isa-v0.1.md](docs/spec/isa-v0.1.md)
 - cmodel: all six instructions implemented (DMA_LOAD/STORE, MATMUL, ELEMENTWISE_ADD, ACT, SYNC); MATMUL uses fp16 in → fp32 block accumulation → fp16 write-back
 - simulator: sequential instruction queue with cycle accounting (`computeCycles`: MAC throughput + DMA bandwidth model)
-- verification: hand-written 128×128 matmul instruction stream (K-tiled, accumulate) checked against PyTorch fp16 / fp64 — see [docs/spec/accuracy.md](docs/spec/accuracy.md) and [docs/cycle-report-h1.md](docs/cycle-report-h1.md)
+- verification: hand-written 128×128 matmul instruction stream (K-tiled, accumulate) checked against PyTorch fp16 / fp64 — see [docs/spec/accuracy.md](docs/spec/accuracy.md) and [docs/report/cycle-report-h1.md](docs/report/cycle-report-h1.md)
 - compiler: skeleton only (Eclipse dialect, `eclipse-opt` stub); H2 = 6 leaf ops + linalg lowering chain + lit wired into the build
 - tests: `matmul_golden` built by the main build; lit tests present, not yet run under CI
 
-The milestone plan is in [docs/roadmap.md](docs/roadmap.md).
+The milestone plan is in [docs/plans/roadmap.md](docs/plans/roadmap.md).
 
 ## ISA v0.1
 
@@ -35,10 +35,10 @@ The milestone plan is in [docs/roadmap.md](docs/roadmap.md).
 
 | Directory  | Contents |
 | ---------- | -------- |
-| `docs/`    | roadmap, ISA spec, study notes |
+| `docs/`    | plans, spec, notes, reports |
 | `runtime/` | `cmodel` (SRAM/DDR model + instruction interpretation), `simulator` (cycle counting) |
 | `compiler/`| Eclipse dialect (MLIR), `eclipse-opt` |
-| `tests/`   | lit tests |
+| `tests/`   | golden 对拍 + lit 测试 |
 
 ## Build
 

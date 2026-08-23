@@ -17,14 +17,16 @@ try:
 except ImportError:
     HAS_TORCH = False
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+RAW_DIR = os.path.join(ROOT, "tests", "data")
 DRIVER = os.path.join(ROOT, "build", "bin", "matmul_golden")
 M = N = K = 128
 TOL = 1e-2
 
 
 def main():
+    os.makedirs(RAW_DIR, exist_ok=True)
+
     rng = np.random.default_rng(0)
     a = rng.standard_normal((M, K)).astype(np.float16)
     b = rng.standard_normal((K, N)).astype(np.float16)
