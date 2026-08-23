@@ -33,3 +33,28 @@
 8. linalg dialect
     LINEar ALGebra，线性代数
     本质其实是数学上的矩阵乘法，这阶段可以进行数学上就成立的变换，硬件无关
+
+    mlir-opt --one-shot-bufferize input.mlir
+    mlir-opt --one-shot-bufferize="bufferize-function-boundaries" input.mlir
+    module {
+        func.func @matmul(%arg0: tensor<16x16xf16>, %arg1: tensor<16x16xf16>, %arg2: tensor<16x16xf16>) -> tensor<16x16xf16> {
+            %0 = bufferization.to_buffer %arg1 : tensor<16x16xf16> to memref<16x16xf16, strided<[?, ?], offset: ?>>
+            %1 = bufferization.to_buffer %arg0 : tensor<16x16xf16> to memref<16x16xf16, strided<[?, ?], offset: ?>>
+            %2 = bufferization.to_buffer %arg2 : tensor<16x16xf16> to memref<16x16xf16, strided<[?, ?], offset: ?>>
+            %alloc = memref.alloc() {alignment = 64 : i64} : memref<16x16xf16>
+            memref.copy %2, %alloc : memref<16x16xf16, strided<[?, ?], offset: ?>> to memref<16x16xf16>
+            linalg.matmul ins(%1, %0 : memref<16x16xf16, strided<[?, ?], offset: ?>>, memref<16x16xf16, strided<[?, ?], offset: ?>>) outs(%alloc : memref<16x16xf16>)
+            %3 = bufferization.to_tensor %alloc : memref<16x16xf16> to tensor<16x16xf16>
+            return %3 : tensor<16x16xf16>
+        }
+    }
+
+    memref.copy %2, %alloc，这里是把dst复制到alloc的内存，memref.copy A,B。其实就是把A复制到B
+    是否加这个参数，不只是 取决于 pass,也 取决于 op,如果 前后的 op是 要 tensor类型，那就不能用 这个 
+
+9. --one-shot-bufferize PASS
+    针对tensorin类型的dialect,把数学上tensor,转成代码领域的memref,然后尽量进行内存复用
+    bufferize-function-boundaries选项：
+        如果 不加 bufferize-function-boundaries 选项，说明 pass前后接口还是 在 tensor领域，中间包着memref，下面的pass需要知道内存分配信息。而加上，就是彻底的 转换了，前后的 psss,必须使用memref. 
+
+    
