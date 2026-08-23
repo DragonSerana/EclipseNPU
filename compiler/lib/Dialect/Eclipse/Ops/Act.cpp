@@ -4,6 +4,15 @@ using namespace mlir;
 using namespace mlir::eclipse;
 
 LogicalResult ActOp::verify() {
-  // TODO(user): 填写 act 的结构检查。
+  auto srcType = mlir::dyn_cast<MemRefType>(getSrc().getType());
+  auto dstType = mlir::dyn_cast<MemRefType>(getDst().getType());
+
+  if (!srcType || !dstType)
+    return emitOpError("ActOp operands must be MemRef types");
+
+  if (srcType.getShape() != dstType.getShape())
+    return emitOpError("ActOp src and dst shapes must match (")
+           << srcType.getShape() << " vs " << dstType.getShape() << ")";
+
   return success();
 }

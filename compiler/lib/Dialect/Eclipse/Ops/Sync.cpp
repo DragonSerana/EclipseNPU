@@ -4,6 +4,6 @@ using namespace mlir;
 using namespace mlir::eclipse;
 
 LogicalResult SyncOp::verify() {
-  // TODO(user): 检查 SYNC 无操作数/无结果（如有必要）。
+  // SYNC 无操作数、无属性，v0.1 无需额外检查。
   return success();
 }
