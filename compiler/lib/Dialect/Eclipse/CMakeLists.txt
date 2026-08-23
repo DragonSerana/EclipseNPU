@@ -10,6 +10,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_mlir_dialect_library(EclipseDialect
   EclipseDialect.cpp
   Ops/DmaLoad.cpp
+  Ops/DmaStore.cpp
   DEPENDS
   EclipseOpsInc
 )

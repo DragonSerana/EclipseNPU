@@ -32,12 +32,13 @@ def Eclipse_DDRMemRef : ConfinedType<
 //   eclipse.sync
 
 def Eclipse_DmaLoadOp : Eclipse_Op<"dma_load"> {
-  let summary = "从 DDR 搬运一个二维 tile 到 SRAM";
+  let summary = "Copy a 2D tile from DDR to SRAM";
   let description = [{
-    `eclipse.dma_load` 对应 ISA 的 DMA_LOAD。它把 DDR 中的一个二维子视图
-    搬运到 SRAM 的 packed 缓冲区。`dst` 必须是 memory_space 0（SRAM），
-    `src` 必须是 memory_space 1（DDR）。rows/cols/stride 由 memref 形状和
-    stride 推导，具体地址在后续 allocate/easm 阶段确定。
+    `eclipse.dma_load` corresponds to the DMA_LOAD instruction in the ISA.
+    It copies a 2D subview from DDR into a packed buffer in SRAM.
+    `dst` must be in memory_space 0 (SRAM), and `src` must be in memory_space 1 (DDR).
+    The rows/cols/stride are derived from the shape and stride of the memrefs.
+    The actual addresses are determined at later allocate/easm phases.
   }];
 
   let arguments = (ins
@@ -51,6 +52,29 @@ def Eclipse_DmaLoadOp : Eclipse_Op<"dma_load"> {
 
   let assemblyFormat = "$dst `,` $src attr-dict `:` type($dst) `,` type($src)";
 }
+
+def Eclipse_DmaStoreOp : Eclipse_Op<"dma_store"> {
+  let summary = "Copy a 2D tile from SRAM to DDR";
+  let description = [{
+    `eclipse.dma_store` corresponds to the DMA_STORE instruction in the ISA.
+    It copies a packed tile from SRAM into a 2D subview in DDR.
+    `src` must be in memory_space 0 (SRAM), and `dst` must be in memory_space 1 (DDR).
+    The rows/cols/stride are derived from the shape and stride of the memrefs.
+    The actual addresses are determined at later allocate/easm phases.
+  }];
+
+  let arguments = (ins
+    Eclipse_SRAMMemRef:$src,
+    Eclipse_DDRMemRef:$dst
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = "$src `,` $dst attr-dict `:` type($src) `,` type($dst)";
+}
+
 
 #endif // ECLIPSE_OPS
 
