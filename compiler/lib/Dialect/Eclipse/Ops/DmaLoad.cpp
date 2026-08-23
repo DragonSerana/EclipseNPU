@@ -42,18 +42,14 @@ LogicalResult DmaLoadOp::verify() {
            << srcType.getShape() << " vs " << dstType.getShape() << ")";
   }
 
-  // src (DDR) must be memory space 1
-  auto srcMemSpace = srcType.getMemorySpace();
-  if (!srcMemSpace || !llvm::isa<IntegerAttr>(srcMemSpace))
-    return emitOpError("src memory space must be an integer");
-  if (llvm::cast<IntegerAttr>(srcMemSpace).getInt() != 1)
+  // src (DDR) must be memory space 1.
+  // 注意：MLIR 的默认 memory_space 0 的存法是空 attribute，
+  // 所以不要用 getMemorySpace() 是否 IntegerAttr 来判断。
+  if (srcType.getMemorySpaceAsInt() != 1)
     return emitOpError("src (DDR) must be in memory space 1");
 
-  // dst (SRAM) must be memory space 0 and identity layout (packed)
-  auto dstMemSpace = dstType.getMemorySpace();
-  if (!dstMemSpace || !llvm::isa<IntegerAttr>(dstMemSpace))
-    return emitOpError("dst memory space must be an integer");
-  if (llvm::cast<IntegerAttr>(dstMemSpace).getInt() != 0)
+  // dst (SRAM) must be memory space 0.
+  if (dstType.getMemorySpaceAsInt() != 0)
     return emitOpError("dst (SRAM) must be in memory space 0");
 
   if (!isPacked(dstType))

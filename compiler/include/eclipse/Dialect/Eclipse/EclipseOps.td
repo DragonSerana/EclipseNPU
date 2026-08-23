@@ -136,7 +136,7 @@ def Eclipse_ActOp : Eclipse_Op<"act"> {
 
   let hasVerifier = 1;
 
-  let assemblyFormat = "$src `,` $dst attr-dict `:` type($src) `,` type($dst)";
+  let assemblyFormat = "$src `,` $dst `{` `kind` `=` $kind `}` attr-dict `:` type($src) `,` type($dst)";
 }
 
 def Eclipse_SyncOp : Eclipse_Op<"sync"> {

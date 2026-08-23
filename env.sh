@@ -16,6 +16,13 @@ function Eclipse-build() {
     echo "[EclipseNPU] Build finished."
 }
 
+function Eclipse-test() {
+    echo "[EclipseNPU] Running lit tests..."
+    cmake --build "${ECLIPSE_NPU_ROOT}/build" --target check-eclipse -j$(nproc)
+    echo "[EclipseNPU] Tests finished."
+}
+
+
 function Eclipse-clean() {
     echo "[EclipseNPU] Cleaning build directory..."
     rm -rf "${ECLIPSE_NPU_ROOT}/build"
