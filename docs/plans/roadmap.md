@@ -42,6 +42,7 @@
 - lit 测试接入主构建（打开 add_subdirectory(tests)）；仓库公开 + CI（build + lit）
 - Done：编译器产出的指令流与 H1 手写指令流语义等价（同一 matmul 通过 PyTorch 对拍）；CI 绿
 - 产出物：完整 lowering 链 + lit 测试 + 架构说明
+- 说明：H2 的 DDR 地址先用固定 ABI（arg0/1/2 写死）；静态 DDR 布局/分配器推迟到 H3.5/H4，避免现在过度设计
 
 辅线（9070 XT，每周 10–20%）：
 
@@ -80,6 +81,7 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
   - 范围：RMSNorm → QKV projection → attention（GQA + RoPE + KV cache 写入）→ 残差 → RMSNorm → SwiGLU MLP → 残差；prefill 8 + decode 2 token
   - 目的：在小规模上把 H4 的集成问题全部暴露一遍——权重转换（safetensors → 自家格式）、多算子调度与 SRAM 编排、softmax 数值稳定性、token 依赖地址烘焙、分算子 cycle 拆解
   - H4 的通过判据：扩到全部层数后只剩"堆量"问题，不再出现新类型的问题
+  - 静态 DDR 布局：为权重、activation、KV cache、embedding 等多 tensor 分配 DDR 地址，不再依赖 H2 的固定三参数 ABI
   - Done：与 PyTorch fp16 单层参考对拍通过（容差在开始时写入文档，H4 沿用）；输出分算子 cycle 拆解报告
   - 产出物：单层对拍脚本 + 权重转换工具链 + 分算子 cycle 拆解报告
 
