@@ -1,7 +1,10 @@
 #include "eclipse/Conversion/Passes.h"
 
+#include "LinalgToEclipsePatterns.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir::eclipse {
 
@@ -17,8 +20,11 @@ public:
       ConvertLinalgToEclipse>::ConvertLinalgToEclipseBase;
 
   void runOnOperation() override {
-    // TODO(user): 在这里实现 linalg.matmul -> Eclipse 的转换逻辑。
-    // 当前先留空，确保 pass 能注册、能挂在 eclipse-opt 上。
+    RewritePatternSet patterns(&getContext());
+    populateLinalgToEclipsePatterns(patterns);
+
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+      signalPassFailure();
   }
 };
 

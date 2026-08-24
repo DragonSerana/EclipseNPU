@@ -1,7 +1,12 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
@@ -10,11 +15,18 @@
 
 int main(int argc, char **argv) {
   mlir::eclipse::registerPasses();
+  mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::eclipse::EclipseDialect, mlir::arith::ArithDialect,
                   mlir::func::FuncDialect, mlir::linalg::LinalgDialect,
-                  mlir::memref::MemRefDialect>();
+                  mlir::memref::MemRefDialect, mlir::tensor::TensorDialect>();
+
+  mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
+      registry);
+
   return mlir::asMainReturnCode(mlir::MlirOptMain(
       argc, argv, "Eclipse NPU optimizer driver\n", registry));
 }

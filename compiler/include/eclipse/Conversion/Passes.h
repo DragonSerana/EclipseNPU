@@ -16,4 +16,3 @@ namespace eclipse {
 } // namespace mlir
 
 #endif // ECLIPSE_CONVERSION_PASSES_H
-

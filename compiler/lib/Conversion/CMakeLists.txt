@@ -7,7 +7,10 @@ add_public_tablegen_target(EclipseConversionPassesIncGen)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_mlir_library(EclipseConversionPasses
-  ConvertLinalgToEclipse.cpp
+  ConvertLinalgToEclipse/ConvertLinalgToEclipse.cpp
+  ConvertLinalgToEclipse/LinalgToEclipsePatterns.cpp
+  ConvertLinalgToEclipse/MatmulLowering.cpp
+  ConvertLinalgToEclipse/AddLowering.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include/eclipse

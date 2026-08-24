@@ -12,7 +12,11 @@ target_link_libraries(eclipse-opt PRIVATE
   MLIRArithDialect
   MLIRFuncDialect
   MLIRLinalgDialect
+  MLIRLinalgTransforms
   MLIRMemRefDialect
+  MLIRTensorDialect
+  MLIRTensorTransforms
+  MLIRBufferizationTransforms
   EclipseDialect
   EclipseConversionPasses
 )
