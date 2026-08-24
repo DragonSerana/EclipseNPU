@@ -43,8 +43,6 @@ LogicalResult DmaLoadOp::verify() {
   }
 
   // src (DDR) must be memory space 1.
-  // 注意：MLIR 的默认 memory_space 0 的存法是空 attribute，
-  // 所以不要用 getMemorySpace() 是否 IntegerAttr 来判断。
   if (srcType.getMemorySpaceAsInt() != 1)
     return emitOpError("src (DDR) must be in memory space 1");
 

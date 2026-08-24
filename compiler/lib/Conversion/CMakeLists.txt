@@ -8,9 +8,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_mlir_library(EclipseConversionPasses
   ConvertLinalgToEclipse/ConvertLinalgToEclipse.cpp
+  ConvertLinalgToEclipse/LinalgToEclipseCommon.cpp
   ConvertLinalgToEclipse/LinalgToEclipsePatterns.cpp
   ConvertLinalgToEclipse/MatmulLowering.cpp
   ConvertLinalgToEclipse/AddLowering.cpp
+  ConvertLinalgToEclipse/ActLowering.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include/eclipse
@@ -24,5 +26,6 @@ add_mlir_library(EclipseConversionPasses
   MLIRPass
   MLIRFuncDialect
   MLIRLinalgDialect
+  MLIRMemRefDialect
   EclipseDialect
 )

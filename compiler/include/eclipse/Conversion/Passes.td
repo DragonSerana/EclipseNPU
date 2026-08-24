@@ -10,16 +10,7 @@ def ConvertLinalgToEclipse : Pass<"convert-linalg-to-eclipse", "::mlir::func::Fu
     "mlir::memref::MemRefDialect"
   ];
   let description = [{
-    TODO(user): 补充 pass 说明。
-
-    目标输入形态（bufferize-function-boundaries 之后）：
-      func.func @matmul(%A: memref<..., 1>, %B: memref<..., 1>, %C: memref<..., 1>) {
-        linalg.matmul ins(%A, %B) outs(%C)
-        return
-      }
-
-    输出目标：
-      eclipse.dma_load / eclipse.matmul / eclipse.sync / eclipse.dma_store
+    Lowering linalg to eclipse dialect
   }];
 }
 

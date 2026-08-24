@@ -40,8 +40,8 @@ def Eclipse_DmaLoadOp : Eclipse_Op<"dma_load"> {
   }];
 
   let arguments = (ins
-    Eclipse_SRAMMemRef:$dst,
-    Eclipse_DDRMemRef:$src
+    Eclipse_DDRMemRef:$src,
+    Eclipse_SRAMMemRef:$dst
   );
 
   let results = (outs);

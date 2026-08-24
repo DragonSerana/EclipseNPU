@@ -10,6 +10,7 @@ target_link_libraries(eclipse-opt PRIVATE
   MLIROptLib
   MLIRPass
   MLIRArithDialect
+  MLIRArithTransforms
   MLIRFuncDialect
   MLIRLinalgDialect
   MLIRLinalgTransforms

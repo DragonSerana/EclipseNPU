@@ -1,3 +1,4 @@
+#include "LinalgToEclipseCommon.h"
 #include "LinalgToEclipsePatterns.h"
 
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
@@ -10,15 +11,6 @@ namespace mlir::eclipse {
 
 namespace {
 
-// bufferize 后函数参数默认是空间 0；这里显式转成 DDR（空间 1）。
-static Value toDDR(PatternRewriter &rewriter, Location loc, Value value) {
-  auto type = mlir::cast<MemRefType>(value.getType());
-  auto ddrType =
-      MemRefType::get(type.getShape(), type.getElementType(), type.getLayout(),
-                      rewriter.getI64IntegerAttr(1));
-  return memref::MemorySpaceCastOp::create(rewriter, loc, ddrType, value);
-}
-
 class MatmulLowering : public OpRewritePattern<linalg::MatmulOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -30,9 +22,9 @@ public:
     Value rhs = op.getInputs()[1];
     Value dst = op.getOutputs()[0];
 
-    Value lhsDdr = toDDR(rewriter, loc, lhs);
-    Value rhsDdr = toDDR(rewriter, loc, rhs);
-    Value dstDdr = toDDR(rewriter, loc, dst);
+    Value lhsDDR = toDDR(rewriter, loc, lhs);
+    Value rhsDDR = toDDR(rewriter, loc, rhs);
+    Value dstDDR = toDDR(rewriter, loc, dst);
 
     auto lhsType = mlir::cast<MemRefType>(lhs.getType());
     auto rhsType = mlir::cast<MemRefType>(rhs.getType());
@@ -49,8 +41,8 @@ public:
     Value rhsSram = memref::AllocOp::create(rewriter, loc, sramRhsType);
     Value dstSram = memref::AllocOp::create(rewriter, loc, sramDstType);
 
-    DmaLoadOp::create(rewriter, loc, lhsSram, lhsDdr);
-    DmaLoadOp::create(rewriter, loc, rhsSram, rhsDdr);
+    DmaLoadOp::create(rewriter, loc, lhsDDR, lhsSram);
+    DmaLoadOp::create(rewriter, loc, rhsDDR, rhsSram);
     SyncOp::create(rewriter, loc);
 
     // TODO.暂时写死False
@@ -58,7 +50,7 @@ public:
     MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, accumulate);
 
     SyncOp::create(rewriter, loc);
-    DmaStoreOp::create(rewriter, loc, dstSram, dstDdr);
+    DmaStoreOp::create(rewriter, loc, dstSram, dstDDR);
 
     memref::DeallocOp::create(rewriter, loc, dstSram);
     memref::DeallocOp::create(rewriter, loc, rhsSram);

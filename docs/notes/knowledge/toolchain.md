@@ -57,4 +57,5 @@
     bufferize-function-boundaries选项：
         如果 不加 bufferize-function-boundaries 选项，说明 pass前后接口还是 在 tensor领域，中间包着memref，下面的pass需要知道内存分配信息。而加上，就是彻底的 转换了，前后的 psss,必须使用memref. 
 
-    
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<16x16xf16>
+    表示地址64bit对齐
