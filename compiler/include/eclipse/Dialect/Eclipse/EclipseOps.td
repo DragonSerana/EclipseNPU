@@ -70,7 +70,7 @@ def Eclipse_DmaStoreOp : Eclipse_Op<"dma_store"> {
 
   let hasVerifier = 1;
 
-  let assemblyFormat = "$src `,` $dst attr-dict `:` type($src) `,` type($dst)";
+  let assemblyFormat = "$dst `,` $src attr-dict `:` type($dst) `,` type($src)";
 }
 
 def Eclipse_MatmulOp : Eclipse_Op<"matmul"> {
