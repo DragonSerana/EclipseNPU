@@ -5,6 +5,10 @@ include "mlir/Pass/PassBase.td"
 
 def ConvertLinalgToEclipse : Pass<"convert-linalg-to-eclipse", "::mlir::func::FuncOp"> {
   let summary = "Lower bufferized linalg operations to Eclipse ops";
+  let dependentDialects = [
+    "mlir::eclipse::EclipseDialect",
+    "mlir::memref::MemRefDialect"
+  ];
   let description = [{
     TODO(user): 补充 pass 说明。
 

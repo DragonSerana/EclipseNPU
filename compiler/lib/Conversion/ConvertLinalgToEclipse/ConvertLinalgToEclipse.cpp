@@ -1,8 +1,10 @@
 #include "eclipse/Conversion/Passes.h"
+#include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 
 #include "LinalgToEclipsePatterns.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -20,6 +22,8 @@ public:
       ConvertLinalgToEclipse>::ConvertLinalgToEclipseBase;
 
   void runOnOperation() override {
+    getContext().getOrLoadDialect<EclipseDialect>();
+
     RewritePatternSet patterns(&getContext());
     populateLinalgToEclipsePatterns(patterns);
 
