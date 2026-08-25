@@ -153,6 +153,18 @@ def Eclipse_SyncOp : Eclipse_Op<"sync"> {
   let assemblyFormat = "attr-dict";
 }
 
+def Eclipse_SramOp : Eclipse_Op<"sram"> {
+  let summary = "Declare an SRAM buffer at a fixed address";
+  let description = [{
+    `eclipse.sram` represents a fixed-address SRAM buffer produced by
+    `eclipse-allocate`. It returns a memref in memory_space 0.
+  }];
+
+  let arguments = (ins I32Attr:$addr);
+  let results = (outs Eclipse_SRAMMemRef:$buffer);
+
+  let assemblyFormat = "custom<PrintHex>($addr) attr-dict `:` type($buffer)";
+}
 
 
 #endif // ECLIPSE_OPS
