@@ -1,6 +1,6 @@
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
-#include "llvm/Support/Format.h" 
+#include "llvm/Support/Format.h"
 
 MLIR_DEFINE_EXPLICIT_TYPE_ID(::mlir::eclipse::EclipseDialect)
 

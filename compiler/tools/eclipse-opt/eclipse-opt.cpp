@@ -11,11 +11,15 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "eclipse/Allocation/Passes.h"
 #include "eclipse/Conversion/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 
 int main(int argc, char **argv) {
   mlir::eclipse::registerPasses();
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::eclipse::createEclipseAllocate();
+  });
   mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;

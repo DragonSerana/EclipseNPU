@@ -59,3 +59,27 @@
 
     %alloc = memref.alloc() {alignment = 64 : i64} : memref<16x16xf16>
     表示地址64bit对齐
+
+10. pass作用等级
+    def EclipseAllocate : Pass<"eclipse-allocate", "::mlir::ModuleOp"> 
+    说明作用在Module。在pass实际实现中，ModuleOp module = getOperation();
+
+11. walk
+    func->walk([&](memref::AllocOp alloc){});
+    walk中是lambda,这里就是找到每个一个allocop的节点，执行函数体内的动作
+
+12. mlir IR结构
+    module,func.func,op都是op
+    block和region用来存放op的容器，针对下面分支的场景。scf.if就有了两个region,每个region有一个block，光有block无法满足分支结构，因为一个 Operation 不能直接拥有多个 Block，但它可以拥有多个 Region。
+
+    scf.if %cond {     // <--- scf.if 是一个 Op
+        // scf.if 拥有 2 个 Region（"then" 和 "else" 各一个）
+        // then Region 里有 1 个 Block
+        %0 = arith.addi ... 
+    } else {
+        // else Region 里有 1 个 Block
+        %1 = arith.subi ...
+    }
+
+    区分region
+    IR中{}内的一定是一个 region,带^bb的 一定是 block,但是 一个 {}内只有一个 block的情况，那就{}里面既是 region也是block，block被省略

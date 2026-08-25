@@ -20,4 +20,5 @@ target_link_libraries(eclipse-opt PRIVATE
   MLIRBufferizationTransforms
   EclipseDialect
   EclipseConversionPasses
+  EclipseAllocationPasses
 )

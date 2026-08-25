@@ -2,3 +2,5 @@ build/
 compile_commands.json
 tests/data/*.raw
 *.easm
+.vscode/
+EclipseNPU.code-workspace

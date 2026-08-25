@@ -24,6 +24,23 @@ function Eclipse-test() {
     echo "[EclipseNPU] Tests finished."
 }
 
+function Eclipse-compile() {
+    if [[ $# -ne 2 ]]; then
+        echo "usage: Eclipse-compile <input.mlir> <output.mlir>" >&2
+        return 1
+    fi
+    input="$1"
+    output="$2"
+    echo "[EclipseNPU] Compiling ${input} -> ${output}"
+    "${ECLIPSE_OPT}" \
+        --one-shot-bufferize="bufferize-function-boundaries" \
+        --convert-linalg-to-eclipse \
+        --eclipse-allocate \
+        "${input}" -o "${output}"
+    echo "[EclipseNPU] Compile finished."
+}
+
+
 
 function Eclipse-clean() {
     echo "[EclipseNPU] Cleaning build directory..."
@@ -73,3 +90,6 @@ function Eclipse-format() {
     clang-format -i "${files[@]}"
     echo "[EclipseNPU] Formatted ${#files[@]} files."
 }
+
+# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse tests/test.mlir
+# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate tests/test.mlir

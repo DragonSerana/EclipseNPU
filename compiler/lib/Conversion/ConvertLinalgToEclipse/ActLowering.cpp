@@ -41,7 +41,7 @@ public:
     DmaLoadOp::create(rewriter, loc, srcDDR, srcSram);
     SyncOp::create(rewriter, loc);
 
-    // TODO.暂时写死RELU                            
+    // TODO.暂时写死RELU
     auto kind = ActKindAttr::get(rewriter.getContext(), ActKind::RELU);
     ActOp::create(rewriter, loc, srcSram, dstSram, kind);
 
