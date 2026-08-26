@@ -14,11 +14,15 @@
 #include "eclipse/Allocation/Passes.h"
 #include "eclipse/Conversion/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
+#include "eclipse/Emit/Passes.h"
 
 int main(int argc, char **argv) {
   mlir::eclipse::registerPasses();
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::eclipse::createEclipseAllocate();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::eclipse::createEclipseToEasm();
   });
   mlir::bufferization::registerBufferizationPasses();
 

@@ -21,4 +21,5 @@ target_link_libraries(eclipse-opt PRIVATE
   EclipseDialect
   EclipseConversionPasses
   EclipseAllocationPasses
+  EclipseEmitPasses
 )
