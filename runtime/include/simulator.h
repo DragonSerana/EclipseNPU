@@ -6,7 +6,7 @@
 #include <deque>
 #include <vector>
 
-namespace eclipse {
+namespace eclipse_runtime {
 
 /// 一条指令的周期明细（cycle 报告数据源）
 struct CycleEntry {
@@ -53,6 +53,6 @@ public:
   const CModel &cmodel() const;
 };
 
-} // namespace eclipse
+} // namespace eclipse_runtime
 
 #endif

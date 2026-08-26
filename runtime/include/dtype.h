@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace eclipse {
+namespace eclipse_runtime {
 
 // fp16: 1 符号 + 5 指数 + 10 尾数
 inline float fp16ToFp32(uint16_t h) {
@@ -112,6 +112,6 @@ inline uint16_t loadU16(const void *p) {
 
 inline void storeU16(void *p, uint16_t v) { std::memcpy(p, &v, sizeof(v)); }
 
-} // namespace eclipse
+} // namespace eclipse_runtime
 
 #endif

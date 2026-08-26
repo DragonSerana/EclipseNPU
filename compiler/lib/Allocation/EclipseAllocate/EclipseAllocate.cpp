@@ -9,6 +9,8 @@
 #include "mlir/Support/LLVM.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
+#include "SramAllocator.h"
+#include "runtime/include/eclipse_isa.h"
 
 namespace mlir::eclipse {
 
@@ -41,6 +43,8 @@ public:
       }
 
       uint32_t addr = 0x0;
+      SramAllocator sramAlloc(::eclipse_runtime::SRAM_ADDR,
+                              ::eclipse_runtime::SRAM_SIZE);
       if (isSRAM) {
         llvm::errs() << "Ly @@@@@@ alloc SRAM @@@@@@@\n";
         OpBuilder builder(alloc);

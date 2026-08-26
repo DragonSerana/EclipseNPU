@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <vector>
 
-using namespace eclipse;
+using namespace eclipse_runtime;
 
 static constexpr uint32_t CMD_BASE = DDR_ADDR + 0x100;
 static constexpr uint32_t DESC_STRIDE = 0x40;

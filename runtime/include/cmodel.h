@@ -5,7 +5,7 @@
 #include "eclipse_isa.h"
 #include <vector>
 
-namespace eclipse {
+namespace eclipse_runtime {
 
 /// 整数向上取整除法：ceil(a / b)
 inline uint64_t ceilDiv(uint64_t a, uint64_t b) { return (a + b - 1) / b; }
@@ -59,6 +59,6 @@ public:
   uint64_t computeCycles(const Instruction &inst) const;
 };
 
-} // namespace eclipse
+} // namespace eclipse_runtime
 
 #endif

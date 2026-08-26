@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <stddef.h>
 
-namespace eclipse {
+namespace eclipse_runtime {
 
 // Memory Define
 constexpr uint32_t SRAM_ADDR = 0x10000000;
@@ -74,6 +74,6 @@ struct ActParam {
   };
 };
 
-} // namespace eclipse
+} // namespace eclipse_runtime
 
 #endif

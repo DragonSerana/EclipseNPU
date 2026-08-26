@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstring>
 
-using namespace eclipse;
+using namespace eclipse_runtime;
 
 CModel::CModel() {
   sram_.resize(SRAM_SIZE);

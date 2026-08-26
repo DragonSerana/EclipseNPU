@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 
-using namespace eclipse;
+using namespace eclipse_runtime;
 
 void Simulator::writeDDR(uint32_t addr, const void *buffer, size_t size) {
   memcpy(cmodel_.ddr(addr), buffer, size);
