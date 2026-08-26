@@ -83,3 +83,10 @@
 
     区分region
     IR中{}内的一定是一个 region,带^bb的 一定是 block,但是 一个 {}内只有一个 block的情况，那就{}里面既是 region也是block，block被省略
+
+13. builder和rewriter
+    OpBuilder 可以在任意IR位置创建op
+    PatternRewriter 在RewritePattern中必须使用rewriter创建和替换op,方便RewritePattern递归标准化/Lowering
+    matchaddrewrite 在RewritePattern要重写的函数，代表看到某个结构替换
+    
+    创建完了之后，也应该 从 之前的 value出发 ，进行 替换 和删除
