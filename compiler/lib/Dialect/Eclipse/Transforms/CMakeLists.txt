@@ -1,0 +1,2 @@
+add_subdirectory(EclipseAllocate)
+add_subdirectory(EclipseToEasm)

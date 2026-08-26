@@ -1,4 +1,4 @@
-#include "eclipse/Allocation/Passes.h"
+#include "eclipse/Dialect/Eclipse/Transforms/AllocationPasses.h"
 #include "eclipse/Dialect/Eclipse/EclipseConstants.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 

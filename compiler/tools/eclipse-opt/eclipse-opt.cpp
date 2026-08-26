@@ -11,10 +11,10 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
-#include "eclipse/Allocation/Passes.h"
 #include "eclipse/Conversion/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
-#include "eclipse/Emit/Passes.h"
+#include "eclipse/Dialect/Eclipse/Transforms/AllocationPasses.h"
+#include "eclipse/Dialect/Eclipse/Transforms/EmitPasses.h"
 
 int main(int argc, char **argv) {
   mlir::eclipse::registerPasses();

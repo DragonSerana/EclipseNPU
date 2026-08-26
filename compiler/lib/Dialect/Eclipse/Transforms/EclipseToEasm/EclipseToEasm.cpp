@@ -1,4 +1,4 @@
-#include "eclipse/Emit/Passes.h"
+#include "eclipse/Dialect/Eclipse/Transforms/EmitPasses.h"
 
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"

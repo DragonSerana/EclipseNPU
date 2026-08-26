@@ -20,3 +20,5 @@ add_mlir_dialect_library(EclipseDialect
   DEPENDS
   EclipseOpsInc
 )
+
+add_subdirectory(Transforms)
