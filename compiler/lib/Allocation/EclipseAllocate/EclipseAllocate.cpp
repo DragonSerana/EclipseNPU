@@ -29,6 +29,39 @@ public:
     SramAllocator sramAlloc(::eclipse_runtime::SRAM_ADDR,
                             ::eclipse_runtime::SRAM_SIZE);
 
+    // TODO. ddr地址alloc,暂时先写死，这里为了避开命令队列区，在mamtmul_golden.cpp的CMD_BASE宏
+    uint32_t curDdrAddr = ::eclipse_runtime::DDR_ADDR + 0x10000;
+    const uint32_t ddrStride = 0x10000;
+
+    OpBuilder builder_ctx(&getContext());
+    module.walk([&](func::FuncOp funcOp){
+      for(uint32_t i = 0; i < funcOp.getNumArguments(); i++){
+        auto argType = funcOp.getArgumentTypes()[i];
+        if (!mlir::dyn_cast<MemRefType>(argType)) 
+          continue;
+
+        auto addrAttr = builder_ctx.getI64IntegerAttr(curDdrAddr);
+        funcOp.setArgAttr(i, "eclipse.ddr_addr", addrAttr);
+        curDdrAddr += ddrStride;
+      }
+
+      for(uint32_t i = 0; i < funcOp.getNumResults(); i++){
+        auto resultType = funcOp.getResultTypes()[i];
+        if (!mlir::dyn_cast<MemRefType>(resultType)) 
+          continue;
+
+        auto addrAttr = builder_ctx.getI64IntegerAttr(curDdrAddr);
+        funcOp.setResultAttr(i, "eclipse.ddr_addr", addrAttr);
+        curDdrAddr += ddrStride;        
+      }
+
+      if (curDdrAddr > ::eclipse_runtime::DDR_ADDR + ::eclipse_runtime::DDR_SIZE) {
+        funcOp->emitError("DDR allocation failed: out of DDR");
+        signalPassFailure();
+        return;
+      }
+    });
+
     module->walk([&](memref::AllocOp alloc) {
       auto memType = mlir::cast<MemRefType>(alloc.getType());
       auto memSpace = memType.getMemorySpaceAsInt();
@@ -70,7 +103,6 @@ public:
         alloc.erase();
       }
     });
-    getContext().getOrLoadDialect<EclipseDialect>();
   }
 };
 
