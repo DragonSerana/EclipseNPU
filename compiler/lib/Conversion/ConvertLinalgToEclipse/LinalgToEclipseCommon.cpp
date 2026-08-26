@@ -1,5 +1,6 @@
 #include "LinalgToEclipseCommon.h"
 
+#include "eclipse/Dialect/Eclipse/EclipseConstants.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 using namespace mlir;
@@ -11,7 +12,7 @@ Value toDDR(PatternRewriter &rewriter, Location loc, Value value) {
   // 设置memref类型为ddr
   auto ddrType =
       MemRefType::get(type.getShape(), type.getElementType(), type.getLayout(),
-                      rewriter.getI64IntegerAttr(1));
+                      rewriter.getI64IntegerAttr(DDR_MEMORY_SPACE));
   return memref::MemorySpaceCastOp::create(rewriter, loc, ddrType, value);
 }
 

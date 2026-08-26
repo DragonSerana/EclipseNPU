@@ -1,3 +1,4 @@
+#include "eclipse/Dialect/Eclipse/EclipseConstants.h"
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
 
 using namespace mlir;
@@ -43,11 +44,11 @@ LogicalResult DmaLoadOp::verify() {
   }
 
   // src (DDR) must be memory space 1.
-  if (srcType.getMemorySpaceAsInt() != 1)
+  if (srcType.getMemorySpaceAsInt() != DDR_MEMORY_SPACE)
     return emitOpError("src (DDR) must be in memory space 1");
 
   // dst (SRAM) must be memory space 0.
-  if (dstType.getMemorySpaceAsInt() != 0)
+  if (dstType.getMemorySpaceAsInt() != SRAM_MEMORY_SPACE)
     return emitOpError("dst (SRAM) must be in memory space 0");
 
   if (!isPacked(dstType))

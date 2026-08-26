@@ -1,4 +1,5 @@
 #include "eclipse/Allocation/Passes.h"
+#include "eclipse/Dialect/Eclipse/EclipseConstants.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 
 #include "SramAllocator.h"
@@ -33,13 +34,13 @@ public:
       auto memSpace = memType.getMemorySpaceAsInt();
 
       bool isSRAM = true;
-      if (memSpace != 0)
+      if (memSpace != SRAM_MEMORY_SPACE)
         isSRAM = false;
 
       for (auto use : alloc->getResults().getUsers()) {
         if (auto castOp = mlir::dyn_cast<memref::MemorySpaceCastOp>(use)) {
           auto dstType = mlir::cast<MemRefType>(castOp.getType());
-          if (dstType.getMemorySpaceAsInt() == 1)
+          if (dstType.getMemorySpaceAsInt() == DDR_MEMORY_SPACE)
             isSRAM = false;
         }
       }
@@ -49,7 +50,7 @@ public:
         auto size =
             allocNumElement * alloc.getType().getElementTypeBitWidth() / 8;
 
-        uint64_t alignment = 32;
+        uint64_t alignment = SRAM_ALIGNMENT;
         if (auto alignAttr = alloc.getAlignment()) {
           alignment = alignAttr.value();
         }

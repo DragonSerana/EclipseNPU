@@ -13,6 +13,7 @@ def Eclipse_Dialect : Dialect {
 class Eclipse_Op<string mnemonic, list<Trait> traits = []>
     : Op<Eclipse_Dialect, mnemonic, traits>;
 
+// 与 EclipseConstants.h 保持同步：0 = SRAM，1 = DDR。
 def Eclipse_SRAMMemRef : ConfinedType<
     MemRefRankOf<[F16], [2]>,
     [CPred<"llvm::cast<::mlir::MemRefType>($_self).getMemorySpaceAsInt() == 0">],
