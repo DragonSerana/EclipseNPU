@@ -90,3 +90,6 @@
     matchaddrewrite 在RewritePattern要重写的函数，代表看到某个结构替换
     
     创建完了之后，也应该 从 之前的 value出发 ，进行 替换 和删除
+
+14. getZExtValue
+    0扩展，从apint转为uint64_t,还有getSExtValue,带符号扩展，返回值是int64_t

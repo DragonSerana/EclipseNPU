@@ -15,7 +15,7 @@ public:
 private:
   uint32_t base_;
   uint32_t size_;
-  uint32_t next_ = 0;
+  uint32_t next_;
 };
 
 } // namespace mlir::eclipse

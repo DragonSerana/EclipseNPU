@@ -1,16 +1,16 @@
 #include "eclipse/Allocation/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 
+#include "SramAllocator.h"
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
+#include "runtime/include/eclipse_isa.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
-#include "SramAllocator.h"
-#include "runtime/include/eclipse_isa.h"
 
 namespace mlir::eclipse {
 
@@ -25,6 +25,8 @@ public:
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+    SramAllocator sramAlloc(::eclipse_runtime::SRAM_ADDR,
+                            ::eclipse_runtime::SRAM_SIZE);
 
     module->walk([&](memref::AllocOp alloc) {
       auto memType = mlir::cast<MemRefType>(alloc.getType());
@@ -42,13 +44,27 @@ public:
         }
       }
 
-      uint32_t addr = 0x0;
-      SramAllocator sramAlloc(::eclipse_runtime::SRAM_ADDR,
-                              ::eclipse_runtime::SRAM_SIZE);
       if (isSRAM) {
-        llvm::errs() << "Ly @@@@@@ alloc SRAM @@@@@@@\n";
+        auto allocNumElement = alloc.getType().getNumElements();
+        auto size =
+            allocNumElement * alloc.getType().getElementTypeBitWidth() / 8;
+
+        uint64_t alignment = 32;
+        if (auto alignAttr = alloc.getAlignment()) {
+          alignment = alignAttr.value();
+        }
+
+        uint32_t addr = sramAlloc.allocate(static_cast<uint32_t>(size),
+                                           static_cast<uint32_t>(alignment));
+        if (addr == 0) {
+          alloc->emitError("SRAM allocation failed: out of SRAM");
+          signalPassFailure();
+          return;
+        }
+
         OpBuilder builder(alloc);
-        auto sramOp = SramOp::create(builder, alloc->getLoc(), alloc.getType(), addr);
+        auto sramOp =
+            SramOp::create(builder, alloc->getLoc(), alloc.getType(), addr);
         alloc.getResult().replaceAllUsesWith(sramOp.getBuffer());
         alloc.erase();
       }

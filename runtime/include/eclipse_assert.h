@@ -23,7 +23,8 @@ namespace eclipse_runtime {
 #define ECLIPSE_ASSERT(cond, msg)                                              \
   do {                                                                         \
     if (!(cond))                                                               \
-      ::eclipse_runtime::eclipse_assert_fail(#cond, (msg), __FILE__, __LINE__);        \
+      ::eclipse_runtime::eclipse_assert_fail(#cond, (msg), __FILE__,           \
+                                             __LINE__);                        \
   } while (0)
 #endif
 
