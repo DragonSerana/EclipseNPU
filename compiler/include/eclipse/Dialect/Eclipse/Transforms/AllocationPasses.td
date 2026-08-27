@@ -6,12 +6,9 @@ include "mlir/Pass/PassBase.td"
 def EclipseAllocate : Pass<"eclipse-allocate", "::mlir::ModuleOp"> {
   let summary = "Allocate SRAM buffers and bind DDR ABI addresses";
   let description = [{
-    TODO(user): 补充 eclipse-allocate 的说明。
-
-    这个 pass 负责：
-    - memref.alloc(space 0) -> eclipse.sram {addr}
-    - 给函数参数挂 DDR ABI 地址
-    - 地址级检查（对齐 / 驻留 / 重叠）
+    Lowers memref.alloc(space 0) to eclipse.sram with assigned addresses,
+    attaches DDR ABI addresses to function arguments, and checks
+    alignment / residency / overlap.
   }];
 
   let options = [

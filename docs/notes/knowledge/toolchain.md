@@ -93,3 +93,7 @@
 
 14. getZExtValue
     0扩展，从apint转为uint64_t,还有getSExtValue,带符号扩展，返回值是int64_t
+
+15. funcOp.getNumResults()和funcOp->getNumResults()
+    funcOp->getNumResults()，因为 funcOp也是 op,所以 返回的 是 那个 %value,当做了 普通 op去调用。而 funcOp.getNumResults()，才是 真的 去 获取return的 value数量
+    
