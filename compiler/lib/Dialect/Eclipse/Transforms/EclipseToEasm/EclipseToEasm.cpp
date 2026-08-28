@@ -7,6 +7,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstdint>
 
 namespace mlir::eclipse {
 
@@ -25,9 +26,24 @@ public:
 
     module->walk([&](Operation *op) {
       if (auto dmaloadOp = mlir::dyn_cast<DmaLoadOp>(op)) {
-        auto castOp = dmaloadOp.getSrc().getDefiningOp<memref::MemorySpaceCastOp>();
+        auto castOp =
+            dmaloadOp.getSrc().getDefiningOp<memref::MemorySpaceCastOp>();
         auto arg = castOp.getSource();
-        llvm::errs() << "ly @@@@@@@@@@ arg = " << arg << "\n";
+        if (auto blockArg = mlir::dyn_cast<BlockArgument>(arg)) {
+          auto funcOp =
+              mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
+          auto addrAttr =
+              funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
+          uint32_t addr =
+              static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
+          llvm::errs() << "input addr = " << addr << "\n";
+        }
+      }
+      if (auto dmastoreOp = mlir::dyn_cast<DmaStoreOp>(op)) {
+        auto castOp =
+            dmastoreOp.getDst().getDefiningOp<memref::MemorySpaceCastOp>();
+        auto dst = castOp.getSource();
+        llvm::errs() << "ly @@@@@@@@@ dst = " << dst << "\n";
       }
     });
   }

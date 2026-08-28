@@ -91,5 +91,4 @@ function Eclipse-format() {
     echo "[EclipseNPU] Formatted ${#files[@]} files."
 }
 
-# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse tests/test.mlir
-# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate tests/test.mlir
+# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm tests/test.mlir
