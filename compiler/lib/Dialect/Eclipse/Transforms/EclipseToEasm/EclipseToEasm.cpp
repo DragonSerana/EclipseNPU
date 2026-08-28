@@ -4,6 +4,7 @@
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/Support/raw_ostream.h"
@@ -43,7 +44,9 @@ public:
         auto castOp =
             dmastoreOp.getDst().getDefiningOp<memref::MemorySpaceCastOp>();
         auto dst = castOp.getSource();
-        llvm::errs() << "ly @@@@@@@@@ dst = " << dst << "\n";
+        auto addrAttr = dst.getDefiningOp<memref::AllocOp>()->getAttrOfType<IntegerAttr>("eclipse.ddr_addr");
+        uint32_t addr = addrAttr.getValue().getZExtValue();
+        llvm::errs() << "ly @@@@@@@@@ addr = " << addr << "\n";
       }
     });
   }

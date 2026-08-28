@@ -46,16 +46,6 @@ public:
         curDdrAddr += ddrStride;
       }
 
-      for (uint32_t i = 0; i < funcOp.getNumResults(); i++) {
-        auto resultType = funcOp.getResultTypes()[i];
-        if (!mlir::dyn_cast<MemRefType>(resultType))
-          continue;
-
-        auto addrAttr = builder_ctx.getI64IntegerAttr(curDdrAddr);
-        funcOp.setResultAttr(i, "eclipse.ddr_addr", addrAttr);
-        curDdrAddr += ddrStride;
-      }
-
       if (curDdrAddr >
           ::eclipse_runtime::DDR_ADDR + ::eclipse_runtime::DDR_SIZE) {
         funcOp->emitError("DDR allocation failed: out of DDR");
@@ -103,6 +93,10 @@ public:
             SramOp::create(builder, alloc->getLoc(), alloc.getType(), addr);
         alloc.getResult().replaceAllUsesWith(sramOp.getBuffer());
         alloc.erase();
+      } else {
+        auto addrAttr = builder_ctx.getI64IntegerAttr(curDdrAddr);
+        alloc->setAttr("eclipse.ddr_addr", addrAttr);
+        curDdrAddr += ddrStride;
       }
     });
   }
