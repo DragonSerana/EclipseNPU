@@ -92,3 +92,4 @@ function Eclipse-format() {
 }
 
 # eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm tests/test.mlir
+# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm="output_easm=matmul.easm" tests/test.mlir

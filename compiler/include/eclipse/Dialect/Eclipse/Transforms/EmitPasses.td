@@ -12,7 +12,7 @@ def EclipseToEasm : Pass<"eclipse-to-easm", "::mlir::ModuleOp"> {
   }];
 
   let options = [
-    Option<"output", "o", "std::string", /*default=*/"\"\"",
+    Option<"output", "output_easm", "std::string", /*default=*/"\"\"",
            "Output .easm path">
   ];
 
