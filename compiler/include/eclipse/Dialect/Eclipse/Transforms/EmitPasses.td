@@ -12,8 +12,8 @@ def EclipseToEasm : Pass<"eclipse-to-easm", "::mlir::ModuleOp"> {
   }];
 
   let options = [
-    Option<"output", "output_easm", "std::string", /*default=*/"\"\"",
-           "Output .easm path">
+    Option<"outputFileName", "output-easm", "std::string", 
+           "\"default_output.easm\"", "Specify the easm file name to write to">
   ];
 
   let dependentDialects = [

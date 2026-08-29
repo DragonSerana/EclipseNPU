@@ -33,3 +33,10 @@
     Instruction inst = queue_.front();
     
     queue_.pop_front();
+
+7. std::error_code EC
+    相当于errno
+    
+8. llvm文件读写
+    raw_fd_ostream纯写入 raw_fd_stream随机读写
+    
