@@ -48,12 +48,12 @@ public:
       } else if (auto dmastoreOp = mlir::dyn_cast<DmaStoreOp>(op)) {
         emitDmaStoreOp(dmastoreOp, fileOS);
       } else if (auto syncOp = mlir::dyn_cast<SyncOp>(op)) {
-        fileOS << "SYNC\n";
+        emitSyncOp(syncOp, fileOS);
       } else if (auto matmulOp = mlir::dyn_cast<MatmulOp>(op)) {
-        
+        emitMatmulOp(matmulOp, fileOS);
+      } else if (auto ewiseOp = mlir::dyn_cast<EwiseAddOp>(op)) {
+        emitEwiseAddOp(ewiseOp, fileOS);
       }
-
-      
     });
   }
 
@@ -74,13 +74,13 @@ private:
       // TODO 目前stride只有packed
       auto srcStride = cols * eclipse_runtime::DTYPE_SIZE;
       auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
-      llvm::errs() << "ly @@@@@@@@ rows = " << rows << ", cols = " << cols
-                   << "\n";
-      descAddr_ += DESC_LEN;
+      
       fileOS << llvm::formatv("{0,-15} desc=0x{1:x} ddr=0x{2:x} rows={3:d} "
                               "cols={4:d} srcStride={5:d} dstStride={6:d}\n",
                               "DMA_LOAD", descAddr_, addr, rows, cols,
                               srcStride, dstStride);
+                              
+      descAddr_ += DESC_LEN;                          
     }
   }
 
@@ -104,6 +104,45 @@ private:
         "{0,-15} desc=0x{1:x} ddr=0x{2:x} rows={3:d} cols={4:d} "
         "srcStride={5:d} dstStride={6:d}\n",
         "DMA_STORE", descAddr_, addr, rows, cols, srcStride, dstStride);
+
+    descAddr_ += DESC_LEN;
+  }
+
+  void emitSyncOp(SyncOp syncOp, llvm::raw_ostream &fileOS) {
+    fileOS << "SYNC\n";
+  }
+
+  void emitMatmulOp(MatmulOp matmulOp, llvm::raw_ostream &fileOS) {
+    uint32_t dst = matmulOp.getDst().getDefiningOp<SramOp>().getAddr();
+    uint32_t lhs = matmulOp.getLhs().getDefiningOp<SramOp>().getAddr();
+    uint32_t rhs = matmulOp.getRhs().getDefiningOp<SramOp>().getAddr();
+
+    //TODO Matmul参数暂时写死
+    uint32_t M = matmulOp.getLhs().getType().getShape()[0];
+    uint32_t K = matmulOp.getLhs().getType().getShape()[1];
+    uint32_t N = matmulOp.getRhs().getType().getShape()[0];
+    uint32_t acc = 0;
+    fileOS << llvm::formatv(
+        "{0,-15} desc=0x{1:x} dst=0x{2:x} lhs=0x{3:x} rhs=0x{4:x} "
+        "M={5:d} N={6:d} K={7:d} acc={8:d}\n",
+        "MATMUL", descAddr_, dst, lhs, rhs, M, N, K, acc);
+
+    descAddr_ += DESC_LEN;
+
+  }  
+
+  void emitEwiseAddOp(EwiseAddOp ewiseOp, llvm::raw_ostream &fileOS) {
+    uint32_t dst = ewiseOp.getDst().getDefiningOp<SramOp>().getAddr();
+    uint32_t lhs = ewiseOp.getLhs().getDefiningOp<SramOp>().getAddr();
+    uint32_t rhs = ewiseOp.getRhs().getDefiningOp<SramOp>().getAddr();
+
+    uint32_t n = 1;
+    for (auto dim : ewiseOp.getLhs().getType().getShape())
+      n *= dim;
+
+    fileOS << llvm::formatv(
+        "{0,-15} desc=0x{1:x} dst=0x{2:x} lhs=0x{3:x} rhs=0x{4:x} n={5:d}\n",
+        "EWISE_ADD", descAddr_, dst, lhs, rhs, n);
 
     descAddr_ += DESC_LEN;
   }
