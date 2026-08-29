@@ -39,4 +39,11 @@
     
 8. llvm文件读写
     raw_fd_ostream纯写入 raw_fd_stream随机读写
+    llvm::raw_fd_ostream fileOS(outputFileName, EC, llvm::sys::fs::OF_None);
+    sys::fs::OF_None: 直接覆盖 
+    写入直接通过
+        fileOS << llvm::formatv
+
+9. 匿名namespace
+    相当于本文件内部私有，不会与其他文件的同名函数发生链接错误。
     

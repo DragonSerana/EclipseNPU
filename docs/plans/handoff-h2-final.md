@@ -319,3 +319,59 @@ lit 切分跟着 pass 走：convert 一个测试目录（每 pattern 正反例�
     v0.2 padding/swizzle：等 SRAM bank 模型把“哪种 tile 形状罚多少”算清楚后，convert 的 tile 参数选择才有依据。
 
 这套东西（3 pass + 7 dialect 的浅栈）值得在你开始 H2.0 时原样沉淀进 docs/notes/compiler-stack.md 当第一节——要我现在写进去说一声。
+---
+
+## H2 中途进展快照（2026-08-28 上下文交接）
+
+### 当前痛点/约定
+- 编译器命名空间是 `mlir::eclipse`；runtime 命名空间已改为 `eclipse_runtime`。
+- 不要 include `eclipse/Dialect/Eclipse/EclipseOps.h.inc`，那是前向声明；要用 `EclipseOps.h`。
+- 以后新代码注释只写 TODO，不写设计逻辑，用户自己实现。
+- 内存 space 常量在 `EclipseConstants.h`：SRAM=0，DDR=1，SRAM_ALIGNMENT=32；TD 里仍写 0/1，注释保持同步。
+
+### 已完成
+- H1 全部保留：ISA v0.1、cmodel/simulator、golden、hazard checker、matmul_check。
+- Eclipse dialect：6 个 leaf op + `eclipse.sram`，verifier 按 op 拆分在 `Ops/`。
+- lit 8 个测试（1 正 + 7 负），`Eclipse-test` 可一键跑。
+- 三个 pass 框架：
+  - `convert-linalg-to-eclipse`：已有 matmul/add/act pattern（单块，无 tiling）。
+  - `eclipse-allocate`：SRAM bump 分配 + DDR ABI 绑定（输入参数/输出 alloc 挂 `eclipse.ddr_addr`）。
+  - `eclipse-to-easm`：已能输出 DMA_LOAD / DMA_STORE / SYNC，MATMUL/EWISE/ACT 还是 TODO。
+
+### 当前目录
+```
+compiler/include/eclipse/
+  Dialect/Eclipse/
+    EclipseConstants.h
+    EclipseOps.td/h
+    Transforms/
+      AllocationPasses.td/h
+      EmitPasses.td/h
+  Conversion/Passes.td/h
+
+compiler/lib/
+  Dialect/Eclipse/
+    EclipseDialect.cpp
+    Ops/
+    Transforms/
+      EclipseAllocate/
+      EclipseToEasm/
+  Conversion/ConvertLinalgToEclipse/
+```
+
+### 当前命令行
+```bash
+build/bin/eclipse-opt \
+  --one-shot-bufferize="bufferize-function-boundaries" \
+  --convert-linalg-to-eclipse \
+  --eclipse-allocate \
+  --eclipse-to-easm="output-easm=matmul.easm" \
+  tests/test.mlir
+```
+`eclipse-to-easm` 的 TD 选项字段是 `outputFileName`，命令行 flag 是 `output-easm`，默认 `default_output.easm`。
+
+### 下一步
+1. 补完 `eclipse-to-easm` 的 MATMUL / EWISE_ADD / ACT 发射。
+2. H2.2：tile-k + scf.for + 静态展开。
+3. 后续：eclipse-run（读 .easm 进 Simulator），16×16 对拍。
+4. 当前未提交改动主要在 `EclipseToEasm.cpp` 和部分文档，建议新窗口先 `git status` 看差异再继续。
