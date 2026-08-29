@@ -1,6 +1,9 @@
 add_executable(matmul_golden golden/matmul_golden.cpp)
 target_link_libraries(matmul_golden PRIVATE EclipseRuntime)
 
+add_executable(eclipse-run eclipse-run.cpp)
+target_link_libraries(eclipse-run PRIVATE EclipseRuntime)
+
 find_program(PYTHON3_EXECUTABLE python3)
 
 find_program(LLVM_LIT_EXECUTABLE NAMES lit lit.py)
