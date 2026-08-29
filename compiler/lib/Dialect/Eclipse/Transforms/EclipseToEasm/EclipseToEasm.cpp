@@ -53,6 +53,8 @@ public:
         emitMatmulOp(matmulOp, fileOS);
       } else if (auto ewiseOp = mlir::dyn_cast<EwiseAddOp>(op)) {
         emitEwiseAddOp(ewiseOp, fileOS);
+      } else if (auto actOp = mlir::dyn_cast<ActOp>(op)) {
+        emitActOp(actOp, fileOS);
       }
     });
   }
@@ -61,27 +63,36 @@ private:
   void emitDmaLoadOp(DmaLoadOp dmaloadOp, llvm::raw_ostream &fileOS) {
     auto castOp = dmaloadOp.getSrc().getDefiningOp<memref::MemorySpaceCastOp>();
     auto arg = castOp.getSource();
+
+    uint32_t addr = 0;
     if (auto blockArg = mlir::dyn_cast<BlockArgument>(arg)) {
       auto funcOp =
           mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
       auto addrAttr =
           funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
-      uint32_t addr =
-          static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
-
-      auto rows = arg.getType().getShape()[0];
-      auto cols = arg.getType().getShape()[1];
-      // TODO 目前stride只有packed
-      auto srcStride = cols * eclipse_runtime::DTYPE_SIZE;
-      auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
-      
-      fileOS << llvm::formatv("{0,-15} desc=0x{1:x} ddr=0x{2:x} rows={3:d} "
-                              "cols={4:d} srcStride={5:d} dstStride={6:d}\n",
-                              "DMA_LOAD", descAddr_, addr, rows, cols,
-                              srcStride, dstStride);
-                              
-      descAddr_ += DESC_LEN;                          
+      addr = static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
+    } else if (auto allocOp = arg.getDefiningOp<memref::AllocOp>()) {
+      auto addrAttr = allocOp->getAttrOfType<IntegerAttr>("eclipse.ddr_addr");
+      addr = static_cast<uint32_t>(addrAttr.getValue().getZExtValue());
+    } else {
+      return;
     }
+
+    uint32_t sram = dmaloadOp.getDst().getDefiningOp<SramOp>().getAddr();
+
+    auto rows = arg.getType().getShape()[0];
+    auto cols = arg.getType().getShape()[1];
+    // TODO 目前stride只有packed
+    auto srcStride = cols * eclipse_runtime::DTYPE_SIZE;
+    auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
+
+    fileOS << llvm::formatv("{0,-15} desc={1:x} sram={2:x} ddr={3:x} "
+                            "rows={4:d} cols={5:d} srcStride={6:d} "
+                            "dstStride={7:d}\n",
+                            "DMA_LOAD", descAddr_, sram, addr, rows, cols,
+                            srcStride, dstStride);
+
+    descAddr_ += DESC_LEN;
   }
 
   void emitDmaStoreOp(DmaStoreOp dmastoreOp, llvm::raw_ostream &fileOS) {
@@ -93,6 +104,8 @@ private:
 
     uint32_t addr = static_cast<uint32_t>(addrAttr.getValue().getZExtValue());
 
+    uint32_t sram = dmastoreOp.getSrc().getDefiningOp<SramOp>().getAddr();
+
     auto memrefType = mlir::cast<MemRefType>(allocOp.getType());
     auto rows = memrefType.getShape()[0];
     auto cols = memrefType.getShape()[1];
@@ -101,9 +114,9 @@ private:
     auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
 
     fileOS << llvm::formatv(
-        "{0,-15} desc=0x{1:x} ddr=0x{2:x} rows={3:d} cols={4:d} "
-        "srcStride={5:d} dstStride={6:d}\n",
-        "DMA_STORE", descAddr_, addr, rows, cols, srcStride, dstStride);
+        "{0,-15} desc={1:x} sram={2:x} ddr={3:x} rows={4:d} cols={5:d} "
+        "srcStride={6:d} dstStride={7:d}\n",
+        "DMA_STORE", descAddr_, sram, addr, rows, cols, srcStride, dstStride);
 
     descAddr_ += DESC_LEN;
   }
@@ -120,10 +133,10 @@ private:
     //TODO Matmul参数暂时写死
     uint32_t M = matmulOp.getLhs().getType().getShape()[0];
     uint32_t K = matmulOp.getLhs().getType().getShape()[1];
-    uint32_t N = matmulOp.getRhs().getType().getShape()[0];
-    uint32_t acc = 0;
+    uint32_t N = matmulOp.getRhs().getType().getShape()[1];
+    uint32_t acc = matmulOp.getAccumulate();
     fileOS << llvm::formatv(
-        "{0,-15} desc=0x{1:x} dst=0x{2:x} lhs=0x{3:x} rhs=0x{4:x} "
+        "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} "
         "M={5:d} N={6:d} K={7:d} acc={8:d}\n",
         "MATMUL", descAddr_, dst, lhs, rhs, M, N, K, acc);
 
@@ -141,8 +154,25 @@ private:
       n *= dim;
 
     fileOS << llvm::formatv(
-        "{0,-15} desc=0x{1:x} dst=0x{2:x} lhs=0x{3:x} rhs=0x{4:x} n={5:d}\n",
-        "EWISE_ADD", descAddr_, dst, lhs, rhs, n);
+        "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} n={5:d}\n",
+        "ELEMENTWISE_ADD", descAddr_, dst, lhs, rhs, n);
+
+    descAddr_ += DESC_LEN;
+  }
+
+  void emitActOp(ActOp actOp, llvm::raw_ostream &fileOS) {
+    uint32_t dst = actOp.getDst().getDefiningOp<SramOp>().getAddr();
+    uint32_t src = actOp.getSrc().getDefiningOp<SramOp>().getAddr();
+
+    uint32_t n = 1;
+    for (auto dim : actOp.getSrc().getType().getShape())
+      n *= dim;
+
+    uint32_t kind = static_cast<uint32_t>(actOp.getKind());
+
+    fileOS << llvm::formatv(
+        "{0,-15} desc={1:x} dst={2:x} src={3:x} n={4:d} kind={5:d}\n",
+        "ACT", descAddr_, dst, src, n, kind);
 
     descAddr_ += DESC_LEN;
   }
