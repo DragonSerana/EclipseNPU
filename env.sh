@@ -91,5 +91,6 @@ function Eclipse-format() {
     echo "[EclipseNPU] Formatted ${#files[@]} files."
 }
 
-# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm tests/test.mlir
-# eclipse-opt --one-shot-bufferize="bufferize-function-boundaries" --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm="output_easm=matmul.easm" tests/test.mlir
+# python3 tests/golden/matmul_check.py --M 16 --N 16 --K 16 \
+#   --bias tests/data/bias.raw \
+#   --driver "build/bin/eclipse-opt --one-shot-bufferize=bufferize-function-boundaries --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm=output-easm=m.easm tests/test.mlir && build/bin/eclipse-run m.easm {c} {a} {b} {bias}"

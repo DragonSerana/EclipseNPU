@@ -11,6 +11,9 @@
     %a目标地址，%aView原地址，memref<128x16xf16, 0>，目标地址在SRAM，shape是128x16，type是f16。
     memref<128x16xf16, strided<[128,1]>, 1>，ddr多了一个stride信息，代表h到h+1=128，w到w+1=1
 
+    memref.subview 在不拷贝数据的前提下，从一块 buffer 里切出一个 tile 视图
+    memref::MemorySpaceCastOp 用来cast memory的space,比如SRAM/DDR
+
 4. type.getLayout().isIdentity();
     判断布局是否是恒等，memref定义是否函数stride
 
@@ -97,3 +100,24 @@
 15. funcOp.getNumResults()和funcOp->getNumResults()
     funcOp->getNumResults()，因为 funcOp也是 op,所以 返回的 是 那个 %value,当做了 普通 op去调用。而 funcOp.getNumResults()，才是 真的 去 获取return的 value数量
     
+16. scf循环dialect语句 
+    scf.yield 循环体的 return语句 
+
+    %final = scf.for %k = %lb to %ub step %bk
+        iter_args(%acc = %init) -> (f32) {   
+            %new_acc = arith.addf %acc, %partial : f32
+            scf.yield %new_acc                     
+        }   
+    可以 把 这个  for类似成 一个 每次 都会 调用的 函数，scf.for %k = %lb to %ub step %bk类比 成 for循环
+    iter_args是为了维护acc这个需要在for循环中更新的值，初始值是init，scf.yield %new_acc   是 for循环 一圈的 返回值，会 返回 给  acc
+    整个scf.for循环结束，会返回给final
+
+17. destination-passing 
+    目标传递风格（destination-passing）= 把“结果写到哪里”作为一个输入参数显式传给 op，而不是让 op 自己返回一个新结果，一定是bufferization之后，进入memref之后的。可以类比指针作为函数入参，直接改值。
+    对应的是 返回值风格（value-returning），返回一个value，类比通过函数返回值获取值。
+
+18. tile
+    matmul:先看 C 放不放下决定要不要切 MN；再看全 K 的 A/B 放不放下决定要不要切 K。 C=A*B
+    memref::SubViewOp
+        subview %A[0, i*tileK][M, tileK][1, 1]
+        MN的offset,MN的Size,MN的stride(元素数)
