@@ -6,6 +6,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/MLIRContext.h"
@@ -29,7 +30,8 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::eclipse::EclipseDialect, mlir::arith::ArithDialect,
                   mlir::func::FuncDialect, mlir::linalg::LinalgDialect,
-                  mlir::memref::MemRefDialect, mlir::tensor::TensorDialect>();
+                  mlir::memref::MemRefDialect, mlir::tensor::TensorDialect,
+                  mlir::scf::SCFDialect>();
 
   mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);

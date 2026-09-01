@@ -7,6 +7,8 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 
 using namespace mlir;
 
@@ -61,13 +63,13 @@ public:
       SmallVector<OpFoldResult> sizes0Lhs   = {rewriter.getIndexAttr(m), rewriter.getIndexAttr(tileK)};
       SmallVector<OpFoldResult> strides0Lhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-      Value sub0Lhs = rewriter.create<memref::SubViewOp>(loc, lhsDDR, offsets0Lhs, sizes0Lhs, strides0Lhs);
+      Value sub0Lhs = memref::SubViewOp::create(rewriter, loc, lhsDDR, offsets0Lhs, sizes0Lhs, strides0Lhs);
 
       SmallVector<OpFoldResult> offsets0Rhs = {rewriter.getIndexAttr(0), rewriter.getIndexAttr(0)};     
       SmallVector<OpFoldResult> sizes0Rhs   = {rewriter.getIndexAttr(tileK), rewriter.getIndexAttr(n)};
       SmallVector<OpFoldResult> strides0Rhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-      Value sub0Rhs = rewriter.create<memref::SubViewOp>(loc, rhsDDR, offsets0Rhs, sizes0Rhs, strides0Rhs);        
+      Value sub0Rhs = memref::SubViewOp::create(rewriter, loc, rhsDDR, offsets0Rhs, sizes0Rhs, strides0Rhs);        
 
       DmaLoadOp::create(rewriter, loc, sub0Lhs, lhsSram);
       DmaLoadOp::create(rewriter, loc, sub0Rhs, rhsSram);
@@ -76,41 +78,46 @@ public:
       MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, rewriter.getBoolAttr(false));
       SyncOp::create(rewriter, loc);
 
-      for (uint32_t i = 0; i < tile; i++) {
-        SmallVector<OpFoldResult> offsetsLhs = {rewriter.getIndexAttr(0), rewriter.getIndexAttr(i*tileK)};     
+      Value lb  = arith::ConstantIndexOp::create(rewriter, loc, 1);
+      Value ub  = arith::ConstantIndexOp::create(rewriter, loc, tile);
+      Value step  = arith::ConstantIndexOp::create(rewriter, loc, 1);
+
+      auto forOp = scf::ForOp::create(rewriter, loc, lb, ub, step);
+      {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(forOp.getBody());
+
+        Value iv = forOp.getInductionVar();
+        Value tkc = arith::ConstantIndexOp::create(rewriter, loc, tileK);
+        Value ik  = arith::MulIOp::create(rewriter, loc, iv, tkc);        
+
+        SmallVector<OpFoldResult> offsetsLhs = {rewriter.getIndexAttr(0), ik};     
         SmallVector<OpFoldResult> sizesLhs   = {rewriter.getIndexAttr(m), rewriter.getIndexAttr(tileK)};
         SmallVector<OpFoldResult> stridesLhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-        Value subLhs = rewriter.create<memref::SubViewOp>(loc, lhsDDR, offsetsLhs, sizesLhs, stridesLhs);
+        Value subLhs = memref::SubViewOp::create(rewriter, loc, lhsDDR, offsetsLhs, sizesLhs, stridesLhs);
 
-        SmallVector<OpFoldResult> offsetsRhs = {rewriter.getIndexAttr(i*tileK), rewriter.getIndexAttr(0)};     
+        SmallVector<OpFoldResult> offsetsRhs = {ik, rewriter.getIndexAttr(0)};     
         SmallVector<OpFoldResult> sizesRhs   = {rewriter.getIndexAttr(tileK), rewriter.getIndexAttr(n)};
         SmallVector<OpFoldResult> stridesRhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-        Value subRhs = rewriter.create<memref::SubViewOp>(loc, rhsDDR, offsetsRhs, sizesRhs, stridesRhs);        
+        Value subRhs = memref::SubViewOp::create(rewriter, loc, rhsDDR, offsetsRhs, sizesRhs, stridesRhs);        
 
         DmaLoadOp::create(rewriter, loc, subLhs, lhsSram);
         DmaLoadOp::create(rewriter, loc, subRhs, rhsSram);
         SyncOp::create(rewriter, loc);
 
-        BoolAttr accumulate;
-        if (i == 0) 
-          accumulate = rewriter.getBoolAttr(false);
-        else 
-          accumulate = rewriter.getBoolAttr(true);
-
-        MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, accumulate);
-
+        MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, rewriter.getBoolAttr(true));
         SyncOp::create(rewriter, loc);
       }
-      
+
       DmaStoreOp::create(rewriter, loc, dstSram, dstDDR);
 
       memref::DeallocOp::create(rewriter, loc, dstSram);
       memref::DeallocOp::create(rewriter, loc, rhsSram);
       memref::DeallocOp::create(rewriter, loc, lhsSram);
     } else {
-      llvm_unreachable("目前只处理可以整除的场景");
+      llvm_unreachable("Currently only supports cases with exact division.");
     }
 
     rewriter.eraseOp(op);
