@@ -4,3 +4,4 @@ tests/data/*.raw
 *.easm
 .vscode/
 EclipseNPU.code-workspace
+*raw

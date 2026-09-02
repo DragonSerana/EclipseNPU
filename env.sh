@@ -74,6 +74,15 @@ function Eclipse-inference() {
     echo "[EclipseNPU] Inference finished."
 }
 
+# 对拍：把 out.raw 与 PyTorch fp16 参考（a@b，可选 +bias）比，输出 rel err + PASS/FAIL
+function Eclipse-check() {
+    if [[ $# -lt 3 ]]; then
+        echo "usage: Eclipse-check <c.raw> <a.raw> <b.raw> [--M M --N N --K K] [--bias bias.raw]" >&2
+        return 1
+    fi
+    python3 "${ECLIPSE_NPU_ROOT}/tests/golden/verify.py" "$@"
+}
+
 
 function Eclipse-clean() {
     echo "[EclipseNPU] Cleaning build directory..."
