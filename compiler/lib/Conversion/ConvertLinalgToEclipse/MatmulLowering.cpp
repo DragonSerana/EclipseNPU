@@ -16,8 +16,6 @@ namespace mlir::eclipse {
 
 namespace {
 
-constexpr uint32_t tileK = 16;
-
 class MatmulLowering : public OpRewritePattern<linalg::MatmulOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -78,37 +76,39 @@ public:
       MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, rewriter.getBoolAttr(false));
       SyncOp::create(rewriter, loc);
 
-      Value lb  = arith::ConstantIndexOp::create(rewriter, loc, 1);
-      Value ub  = arith::ConstantIndexOp::create(rewriter, loc, tile);
-      Value step  = arith::ConstantIndexOp::create(rewriter, loc, 1);
+      if (tile > 1) {
+        Value lb  = arith::ConstantIndexOp::create(rewriter, loc, 1);
+        Value ub  = arith::ConstantIndexOp::create(rewriter, loc, tile);
+        Value step  = arith::ConstantIndexOp::create(rewriter, loc, 1);
 
-      auto forOp = scf::ForOp::create(rewriter, loc, lb, ub, step);
-      {
-        OpBuilder::InsertionGuard guard(rewriter);
-        rewriter.setInsertionPointToStart(forOp.getBody());
+        auto forOp = scf::ForOp::create(rewriter, loc, lb, ub, step);
+        {
+          OpBuilder::InsertionGuard guard(rewriter);
+          rewriter.setInsertionPointToStart(forOp.getBody());
 
-        Value iv = forOp.getInductionVar();
-        Value tkc = arith::ConstantIndexOp::create(rewriter, loc, tileK);
-        Value ik  = arith::MulIOp::create(rewriter, loc, iv, tkc);        
+          Value iv = forOp.getInductionVar();
+          Value tkc = arith::ConstantIndexOp::create(rewriter, loc, tileK);
+          Value ik  = arith::MulIOp::create(rewriter, loc, iv, tkc);        
 
-        SmallVector<OpFoldResult> offsetsLhs = {rewriter.getIndexAttr(0), ik};     
-        SmallVector<OpFoldResult> sizesLhs   = {rewriter.getIndexAttr(m), rewriter.getIndexAttr(tileK)};
-        SmallVector<OpFoldResult> stridesLhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
+          SmallVector<OpFoldResult> offsetsLhs = {rewriter.getIndexAttr(0), ik};     
+          SmallVector<OpFoldResult> sizesLhs   = {rewriter.getIndexAttr(m), rewriter.getIndexAttr(tileK)};
+          SmallVector<OpFoldResult> stridesLhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-        Value subLhs = memref::SubViewOp::create(rewriter, loc, lhsDDR, offsetsLhs, sizesLhs, stridesLhs);
+          Value subLhs = memref::SubViewOp::create(rewriter, loc, lhsDDR, offsetsLhs, sizesLhs, stridesLhs);
 
-        SmallVector<OpFoldResult> offsetsRhs = {ik, rewriter.getIndexAttr(0)};     
-        SmallVector<OpFoldResult> sizesRhs   = {rewriter.getIndexAttr(tileK), rewriter.getIndexAttr(n)};
-        SmallVector<OpFoldResult> stridesRhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
+          SmallVector<OpFoldResult> offsetsRhs = {ik, rewriter.getIndexAttr(0)};     
+          SmallVector<OpFoldResult> sizesRhs   = {rewriter.getIndexAttr(tileK), rewriter.getIndexAttr(n)};
+          SmallVector<OpFoldResult> stridesRhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
 
-        Value subRhs = memref::SubViewOp::create(rewriter, loc, rhsDDR, offsetsRhs, sizesRhs, stridesRhs);        
+          Value subRhs = memref::SubViewOp::create(rewriter, loc, rhsDDR, offsetsRhs, sizesRhs, stridesRhs);        
 
-        DmaLoadOp::create(rewriter, loc, subLhs, lhsSram);
-        DmaLoadOp::create(rewriter, loc, subRhs, rhsSram);
-        SyncOp::create(rewriter, loc);
+          DmaLoadOp::create(rewriter, loc, subLhs, lhsSram);
+          DmaLoadOp::create(rewriter, loc, subRhs, rhsSram);
+          SyncOp::create(rewriter, loc);
 
-        MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, rewriter.getBoolAttr(true));
-        SyncOp::create(rewriter, loc);
+          MatmulOp::create(rewriter, loc, lhsSram, rhsSram, dstSram, rewriter.getBoolAttr(true));
+          SyncOp::create(rewriter, loc);
+        }
       }
 
       DmaStoreOp::create(rewriter, loc, dstSram, dstDDR);

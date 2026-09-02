@@ -11,7 +11,6 @@
     %a目标地址，%aView原地址，memref<128x16xf16, 0>，目标地址在SRAM，shape是128x16，type是f16。
     memref<128x16xf16, strided<[128,1]>, 1>，ddr多了一个stride信息，代表h到h+1=128，w到w+1=1
 
-    memref.subview 在不拷贝数据的前提下，从一块 buffer 里切出一个 tile 视图
     memref::MemorySpaceCastOp 用来cast memory的space,比如SRAM/DDR
 
 4. type.getLayout().isIdentity();
@@ -112,12 +111,40 @@
     iter_args是为了维护acc这个需要在for循环中更新的值，初始值是init，scf.yield %new_acc   是 for循环 一圈的 返回值，会 返回 给  acc
     整个scf.for循环结束，会返回给final
 
+    lb,循环变量i的初值，ub，循环变量i的结束值。step,i的步进。op的操作数必须value,因此要通过ConstantIndexOp创建
+    Value lb  = arith::ConstantIndexOp::create(rewriter, loc, 1);
+    scf::ForOp::create(rewriter, loc, lb, ub, step);
+
+    // block结束后恢复插入点
+    OpBuilder::InsertionGuard guard(rewriter);
+    // 设置插入op点为forop的body(block)
+    rewriter.setInsertionPointToStart(forOp.getBody());
+
+    // 获取循环变量iv
+    Value iv = forOp.getInductionVar();
+    Value tkc = arith::ConstantIndexOp::create(rewriter, loc, tileK);
+    // 整数乘法，计算iv*tkc，tkc就等于tileK
+    Value ik  = arith::MulIOp::create(rewriter, loc, iv, tkc);   
+
+
 17. destination-passing 
     目标传递风格（destination-passing）= 把“结果写到哪里”作为一个输入参数显式传给 op，而不是让 op 自己返回一个新结果，一定是bufferization之后，进入memref之后的。可以类比指针作为函数入参，直接改值。
     对应的是 返回值风格（value-returning），返回一个value，类比通过函数返回值获取值。
 
 18. tile
     matmul:先看 C 放不放下决定要不要切 MN；再看全 K 的 A/B 放不放下决定要不要切 K。 C=A*B
+    memref.subview 在不拷贝数据的前提下，从一块 buffer 里切出一个 tile 视图
     memref::SubViewOp
         subview %A[0, i*tileK][M, tileK][1, 1]
         MN的offset,MN的Size,MN的stride(元素数)
+        这里的意思就是从offset开始，取Size这么长，stride是1。如果stride是2,那就是跳着取值
+
+        创建subview
+        SmallVector<OpFoldResult> offsetsLhs = {rewriter.getIndexAttr(0), ik};     
+        SmallVector<OpFoldResult> sizesLhs   = {rewriter.getIndexAttr(m), rewriter.getIndexAttr(tileK)};
+        SmallVector<OpFoldResult> stridesLhs = {rewriter.getIndexAttr(1), rewriter.getIndexAttr(1)};
+
+        Value subLhs = memref::SubViewOp::create(rewriter, loc, lhsDDR, offsetsLhs, sizesLhs, stridesLhs);        
+
+20. class OpFoldResult : public PointerUnion<Attribute, Value>
+    类似C语言的n联合体，既可以是编译期(编译模型时)常量Attribute，也可以是运行期才能获取的值Value

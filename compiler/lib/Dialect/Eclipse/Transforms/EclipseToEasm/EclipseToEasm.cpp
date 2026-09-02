@@ -6,15 +6,23 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "runtime/include/eclipse_isa.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 #include <system_error>
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 namespace mlir::eclipse {
 
@@ -42,6 +50,14 @@ public:
       return;
     }
 
+    module.walk([&](scf::ForOp forOp) {
+      if (failed(loopUnrollFull(forOp)))
+        signalPassFailure();
+    });
+
+    mlir::OperationFolder folder(&getContext());
+    module.walk([&](Operation *op) { (void)folder.tryToFold(op); });
+
     module->walk([&](Operation *op) {
       if (auto dmaloadOp = mlir::dyn_cast<DmaLoadOp>(op)) {
         emitDmaLoadOp(dmaloadOp, fileOS);
@@ -55,44 +71,96 @@ public:
         emitEwiseAddOp(ewiseOp, fileOS);
       } else if (auto actOp = mlir::dyn_cast<ActOp>(op)) {
         emitActOp(actOp, fileOS);
-      }
+      }  
     });
   }
 
 private:
   void emitDmaLoadOp(DmaLoadOp dmaloadOp, llvm::raw_ostream &fileOS) {
-    auto castOp = dmaloadOp.getSrc().getDefiningOp<memref::MemorySpaceCastOp>();
-    auto arg = castOp.getSource();
+    auto src = dmaloadOp.getSrc();
+    if (auto castOp = llvm::dyn_cast<memref::MemorySpaceCastOp>(src.getDefiningOp())) {
+      auto arg = castOp.getSource();
 
-    uint32_t addr = 0;
-    if (auto blockArg = mlir::dyn_cast<BlockArgument>(arg)) {
-      auto funcOp =
-          mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
-      auto addrAttr =
-          funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
-      addr = static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
-    } else if (auto allocOp = arg.getDefiningOp<memref::AllocOp>()) {
-      auto addrAttr = allocOp->getAttrOfType<IntegerAttr>("eclipse.ddr_addr");
-      addr = static_cast<uint32_t>(addrAttr.getValue().getZExtValue());
+      uint32_t addr = 0;
+      if (auto blockArg = mlir::dyn_cast<BlockArgument>(arg)) {
+        auto funcOp =
+            mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
+        auto addrAttr =
+            funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
+        addr = static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
+      } else if (auto allocOp = arg.getDefiningOp<memref::AllocOp>()) {
+        auto addrAttr = allocOp->getAttrOfType<IntegerAttr>("eclipse.ddr_addr");
+        addr = static_cast<uint32_t>(addrAttr.getValue().getZExtValue());
+      } else {
+        return;
+      }
+
+      uint32_t sram = dmaloadOp.getDst().getDefiningOp<SramOp>().getAddr();
+
+      auto rows = arg.getType().getShape()[0];
+      auto cols = arg.getType().getShape()[1];
+      // TODO 目前stride只有packed
+      auto srcStride = cols * eclipse_runtime::DTYPE_SIZE;
+      auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
+
+      fileOS << llvm::formatv("{0,-15} desc={1:x} sram={2:x} ddr={3:x} "
+                              "rows={4:d} cols={5:d} srcStride={6:d} "
+                              "dstStride={7:d}\n",
+                              "DMA_LOAD", descAddr_, sram, addr, rows, cols,
+                              srcStride, dstStride);
+
+      descAddr_ += DESC_LEN;
+    } else if (auto subViewOp = llvm::dyn_cast<memref::SubViewOp>(src.getDefiningOp())) {
+      llvm::SmallVector<OpFoldResult> offsets = subViewOp.getMixedOffsets();
+      llvm::SmallVector<OpFoldResult> sizes = subViewOp.getMixedSizes();
+      llvm::SmallVector<OpFoldResult> strides = subViewOp.getMixedStrides();
+
+      auto castOp = subViewOp.getSource().getDefiningOp<memref::MemorySpaceCastOp>();
+      auto arg = castOp.getSource();
+      uint32_t baseAddr = 0;
+      if (auto blockArg = mlir::dyn_cast<BlockArgument>(arg)) {
+        auto funcOp =
+            mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
+        auto addrAttr =
+            funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
+        baseAddr = static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
+      } else if (auto allocOp = arg.getDefiningOp<memref::AllocOp>()) {
+        auto addrAttr = allocOp->getAttrOfType<IntegerAttr>("eclipse.ddr_addr");
+        baseAddr = static_cast<uint32_t>(addrAttr.getValue().getZExtValue());
+      } else {
+        return;
+      }
+
+      auto getV = [](OpFoldResult f) -> int64_t {
+        if (auto v = getConstantIntValue(f)) return *v;
+        return mlir::cast<arith::ConstantIndexOp>(mlir::cast<Value>(f).getDefiningOp()).value();
+      };
+
+      uint32_t rowOffset = getV(offsets[0]);
+      uint32_t colOffset = getV(offsets[1]);
+      uint32_t rows = getV(sizes[0]);
+      uint32_t cols = getV(sizes[1]);
+      // 内存行 stride = base 的列数(packed)
+      auto baseType = mlir::cast<MemRefType>(arg.getType());
+      uint32_t rowSrcStride = baseType.getShape()[1] * eclipse_runtime::DTYPE_SIZE;
+      uint32_t colStride = getV(strides[1]) * eclipse_runtime::DTYPE_SIZE;
+      // 这里应该用切分的size,因为放到sram是切分后的 
+      uint32_t rowDstStride = getV(sizes[1]) * eclipse_runtime::DTYPE_SIZE; 
+
+      auto addr = baseAddr + rowOffset * rowSrcStride + colOffset * colStride;
+
+      uint32_t sram = dmaloadOp.getDst().getDefiningOp<SramOp>().getAddr();
+      fileOS << llvm::formatv("{0,-15} desc={1:x} sram={2:x} ddr={3:x} "
+                              "rows={4:d} cols={5:d} srcStride={6:d} "
+                              "dstStride={7:d}\n",
+                              "DMA_LOAD", descAddr_, sram, addr, rows, cols,
+                              rowSrcStride, rowDstStride);
+
+      descAddr_ += DESC_LEN;      
     } else {
-      return;
+      llvm_unreachable("dmaloadOp src getDefiningOp must be Cast/Subview");
     }
-
-    uint32_t sram = dmaloadOp.getDst().getDefiningOp<SramOp>().getAddr();
-
-    auto rows = arg.getType().getShape()[0];
-    auto cols = arg.getType().getShape()[1];
-    // TODO 目前stride只有packed
-    auto srcStride = cols * eclipse_runtime::DTYPE_SIZE;
-    auto dstStride = cols * eclipse_runtime::DTYPE_SIZE;
-
-    fileOS << llvm::formatv("{0,-15} desc={1:x} sram={2:x} ddr={3:x} "
-                            "rows={4:d} cols={5:d} srcStride={6:d} "
-                            "dstStride={7:d}\n",
-                            "DMA_LOAD", descAddr_, sram, addr, rows, cols,
-                            srcStride, dstStride);
-
-    descAddr_ += DESC_LEN;
+    
   }
 
   void emitDmaStoreOp(DmaStoreOp dmastoreOp, llvm::raw_ostream &fileOS) {
