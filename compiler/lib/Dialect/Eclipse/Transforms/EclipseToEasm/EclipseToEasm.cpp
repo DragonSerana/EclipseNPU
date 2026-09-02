@@ -204,7 +204,7 @@ private:
     uint32_t N = matmulOp.getRhs().getType().getShape()[1];
     uint32_t acc = matmulOp.getAccumulate();
     fileOS << llvm::formatv(
-        "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} "
+        "{0,-14} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} "
         "M={5:d} N={6:d} K={7:d} acc={8:d}\n",
         "MATMUL", descAddr_, dst, lhs, rhs, M, N, K, acc);
 

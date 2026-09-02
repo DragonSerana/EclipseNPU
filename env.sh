@@ -7,6 +7,7 @@ export ECLIPSE_NPU_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${ECLIPSE_NPU_ROOT}/build/bin:${PATH}"
 
 export ECLIPSE_OPT="${ECLIPSE_NPU_ROOT}/build/bin/eclipse-opt"
+export ECLIPSE_RUN="${ECLIPSE_NPU_ROOT}/build/bin/eclipse-run"
 
 function Eclipse-build() {
     echo "[EclipseNPU] Starting build..."
@@ -40,6 +41,38 @@ function Eclipse-compile() {
     echo "[EclipseNPU] Compile finished."
 }
 
+# 编译模型：.mlir -> .easm（完整 pipeline，含 layout 可选 bump|golden-mirror）
+function Eclipse-easm() {
+    if [[ $# -lt 2 ]]; then
+        echo "usage: Eclipse-easm <input.mlir> <output.easm> [layout=bump|golden-mirror]" >&2
+        return 1
+    fi
+    input="$1"
+    output="$2"
+    layout="${3:-bump}"
+    echo "[EclipseNPU] Compiling model ${input} -> ${output} (layout=${layout})"
+    "${ECLIPSE_OPT}" \
+        --one-shot-bufferize="bufferize-function-boundaries" \
+        --convert-linalg-to-eclipse \
+        --eclipse-allocate="layout=${layout}" \
+        --eclipse-to-easm="output-easm=${output}" \
+        "${input}" -o /dev/null
+    echo "[EclipseNPU] Compile finished."
+}
+
+# 推理：跑 eclipse-run 执行 .easm，产出结果 raw
+function Eclipse-inference() {
+    if [[ $# -lt 3 ]]; then
+        echo "usage: Eclipse-inference <input.easm> <out.raw> [in.raw ...]" >&2
+        return 1
+    fi
+    easm="$1"
+    out="$2"
+    shift 2
+    echo "[EclipseNPU] Running inference on ${easm} -> ${out}"
+    "${ECLIPSE_RUN}" "${easm}" "${out}" "$@"
+    echo "[EclipseNPU] Inference finished."
+}
 
 
 function Eclipse-clean() {
