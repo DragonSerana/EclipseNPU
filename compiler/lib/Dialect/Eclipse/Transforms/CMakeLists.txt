@@ -1,2 +1,3 @@
 add_subdirectory(EclipseAllocate)
 add_subdirectory(EclipseToEasm)
+add_subdirectory(EclipseElideCopies)

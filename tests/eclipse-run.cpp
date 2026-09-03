@@ -159,6 +159,9 @@ int main(int argc, char **argv) {
 
   sim.run();
 
+  std::printf("total cycle = %llu\n",
+              static_cast<unsigned long long>(sim.totalCycles()));
+
   if (outBytes > 0) {
     FILE *fp = std::fopen(outPath, "wb");
     if (!fp) {

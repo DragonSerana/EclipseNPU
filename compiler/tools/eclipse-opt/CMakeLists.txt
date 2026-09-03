@@ -22,4 +22,5 @@ target_link_libraries(eclipse-opt PRIVATE
   EclipseConversionPasses
   EclipseAllocationPasses
   EclipseEmitPasses
+  EclipseElideCopies
 )

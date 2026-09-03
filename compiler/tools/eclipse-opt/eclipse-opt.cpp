@@ -15,6 +15,7 @@
 #include "eclipse/Conversion/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"
 #include "eclipse/Dialect/Eclipse/Transforms/AllocationPasses.h"
+#include "eclipse/Dialect/Eclipse/Transforms/ElideCopiesPasses.h"
 #include "eclipse/Dialect/Eclipse/Transforms/EmitPasses.h"
 
 int main(int argc, char **argv) {
@@ -24,6 +25,9 @@ int main(int argc, char **argv) {
   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::eclipse::createEclipseToEasm();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::eclipse::createEclipseElideCopies();
   });
   mlir::bufferization::registerBufferizationPasses();
 
