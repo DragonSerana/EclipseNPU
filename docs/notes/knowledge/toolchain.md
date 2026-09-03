@@ -148,3 +148,9 @@
 
 20. class OpFoldResult : public PointerUnion<Attribute, Value>
     类似C语言的n联合体，既可以是编译期(编译模型时)常量Attribute，也可以是运行期才能获取的值Value
+
+21. Pass定义
+    def EclipseAllocate : Pass<"eclipse-allocate", "::mlir::ModuleOp">
+    表示pass作用域是::mlir::ModuleOp，即  runOnOperation进去的就是moduleop
+        void runOnOperation() override 
+        ModuleOp module = getOperation();
