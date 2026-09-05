@@ -54,3 +54,8 @@
     On^2, 两个for循环嵌套
     On!, 数组内所有等于数组长度的排列
     O2^n, 
+
+11. unordermap
+    通过hash+桶的方式
+    比如一对key,value。对key做hash,然后取模(hash(key)%10)，这样可以把很多key:value放在桶中，如果重复，那就往后跟链表，这样上来先算hash,O1，然后再链表找key,最差是On.不过当size>bucket_count时，会扩容，让链表尽量短
+    比如结构体指针数组的好处是，key必须是正整数，而且不能是跳着的，比如 key=10000，按就要申请10000个sizeof(p)

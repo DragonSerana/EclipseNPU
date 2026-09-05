@@ -154,3 +154,20 @@
     表示pass作用域是::mlir::ModuleOp，即  runOnOperation进去的就是moduleop
         void runOnOperation() override 
         ModuleOp module = getOperation();
+
+22. Value
+    Value其实就是  ValueImpl *impl(implementation)指针。
+    不管这个 Value 在多少个函数里被传来传去、被多少个 op 当 operand 引用，指的都是 IR 里那个唯一的 SSA value 对象，也就对应impl。
+
+23. DenseMap
+    也是通过hash的方式存储数据方便查找，和unordermap的桶+链表不同，densemap是如果相同就跳过一定(1/4/9/16)的位置，
+        DenseMap<Value, DmaStoreOp> lastStore;
+
+    module->walk([&](Operation *op) 
+      if (auto storeOp = dyn_cast<DmaStoreOp>(op)) {
+        Value storeKey = getViewSource(storeOp.getSrc());
+        lastStore[storeKey] = storeOp;
+      } else if (auto loadOp = dyn_cast<DmaLoadOp>(op)) {
+        Value loadKey = getViewSource(loadOp.getDst());
+        auto it = lastStore.find(loadKey);
+      }
