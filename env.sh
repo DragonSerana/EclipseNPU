@@ -1,7 +1,10 @@
 #!/bin/bash
 
-export LLVM_DIR=/home/serana/mlir/llvm-project/install/lib/cmake/llvm
-export MLIR_DIR=/home/serana/mlir/llvm-project/install/lib/cmake/mlir
+# 可被外部覆盖（CI 容器里指向 /usr/local）；默认是本地自编译的 MLIR/LLVM。
+export LLVM_INSTALL_DIR="${LLVM_INSTALL_DIR:-/home/serana/mlir/llvm-project/install}"
+export MLIR_INSTALL_DIR="${MLIR_INSTALL_DIR:-/home/serana/mlir/llvm-project/install}"
+export LLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm"
+export MLIR_DIR="${MLIR_INSTALL_DIR}/lib/cmake/mlir"
 
 export ECLIPSE_NPU_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${ECLIPSE_NPU_ROOT}/build/bin:${PATH}"
