@@ -1,21 +1,33 @@
+# Per-push / per-PR CI. Pulls the cached LLVM/MLIR image layers from GHCR
+# (built by build-image.yml), compiles the compiler, runs all three test gates.
+# On a cold repo (no image in GHCR yet) the first run builds the image.
 name: ci
 
 on:
   push:
   pull_request:
 
+env:
+  LLVM_COMMIT: a67efda258fa73c7b6b915fb31b8412b800a15e9
+
 jobs:
   build-and-test:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
 
-      # Build (or restore from cache) the image with LLVM/MLIR baked in.
-      # The LLVM build layer is cached via GitHub Actions gha cache, so only
-      # the first run builds MLIR from scratch.
-      - name: Build LLVM/MLIR image (cached)
+      - name: Compute GHCR image ref
+        id: img
+        run: |
+          echo "ref=ghcr.io/$(echo ${GITHUB_REPOSITORY} | tr '[:upper:]' '[:lower:]')/eclipse-ci" \
+            >> "$GITHUB_OUTPUT"
+
+      # Restore the LLVM/MLIR layers from the prebuilt image (or build on cold start).
+      - name: Build image from GHCR cache
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -23,11 +35,11 @@ jobs:
           load: true
           push: false
           tags: eclipse-ci:latest
-          cache-from: type=gha,scope=eclipse-ci
-          cache-to: type=gha,scope=eclipse-ci,mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.img.outputs.ref }}:${{ env.LLVM_COMMIT }}
+            type=registry,ref=${{ steps.img.outputs.ref }}:cache
 
-      # Build the compiler and run all three test targets inside the container.
-      - name: Build + test
+      - name: Compile + run tests
         run: |
           docker run --rm \
             -v "${{ github.workspace }}":/workspace \

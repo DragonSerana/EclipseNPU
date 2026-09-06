@@ -1,0 +1,52 @@
+# Build (and push to GHCR) the heavy LLVM/MLIR image.
+# Triggers:
+#   - workflow_dispatch (manual "Run workflow" button)
+#   - schedule (weekly Sunday 04:00 UTC) to re-pull upstream
+#   - push to main (keeps the image fresh for the pinned commit)
+# ci.yml pulls the cached layers from this image, so per-push CI stays fast.
+name: build-image
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 0"
+  push:
+    branches: [main]
+
+env:
+  LLVM_COMMIT: a67efda258fa73c7b6b915fb31b8412b800a15e9
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute GHCR image ref
+        id: img
+        run: |
+          echo "ref=ghcr.io/$(echo ${GITHUB_REPOSITORY} | tr '[:upper:]' '[:lower:]')/eclipse-ci" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: true
+          tags: |
+            ${{ steps.img.outputs.ref }}:${{ env.LLVM_COMMIT }}
+            ${{ steps.img.outputs.ref }}:latest
+          build-args: |
+            LLVM_COMMIT=${{ env.LLVM_COMMIT }}
+          cache-from: type=registry,ref=${{ steps.img.outputs.ref }}:cache
+          cache-to: type=registry,ref=${{ steps.img.outputs.ref }}:cache,mode=max
