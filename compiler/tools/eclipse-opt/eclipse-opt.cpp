@@ -10,8 +10,8 @@
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Transforms/Passes.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/Transforms/Passes.h"
 
 #include "eclipse/Conversion/Passes.h"
 #include "eclipse/Dialect/Eclipse/EclipseDialect.h"

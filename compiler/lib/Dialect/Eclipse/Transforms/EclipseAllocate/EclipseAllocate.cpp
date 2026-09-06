@@ -9,8 +9,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMap.h"
 #include "runtime/include/eclipse_isa.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 

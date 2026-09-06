@@ -18,9 +18,7 @@ uint32_t hexVal(const std::string &s) {
   return static_cast<uint32_t>(std::strtoul(s.c_str(), nullptr, 0));
 }
 
-long intVal(const std::string &s) {
-  return std::strtol(s.c_str(), nullptr, 0);
-}
+long intVal(const std::string &s) { return std::strtol(s.c_str(), nullptr, 0); }
 
 struct Insn {
   std::string op;

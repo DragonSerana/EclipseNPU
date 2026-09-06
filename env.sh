@@ -41,7 +41,7 @@ function Eclipse-compile() {
         --canonicalize \
         --eclipse-allocate="layout=${layout}" \
         --eclipse-to-easm="output-easm=${output}" \
-        "${input}" -o /dev/null
+        "${input}" > /dev/null 2>&1
     echo "[EclipseNPU] Compile finished."
 }
 
