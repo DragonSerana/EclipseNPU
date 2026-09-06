@@ -29,5 +29,6 @@ include_directories(${ECLIPSE_SOURCE_DIR}/compiler/include)
 include_directories(${ECLIPSE_BINARY_DIR})
 
 add_subdirectory(runtime)
+add_subdirectory(tools)
 add_subdirectory(compiler)
 add_subdirectory(tests)

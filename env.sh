@@ -21,7 +21,7 @@ function Eclipse-build() {
 
 function Eclipse-test() {
     echo "[EclipseNPU] Running tests..."
-    cmake --build "${ECLIPSE_NPU_ROOT}/build" --target check-eclipse check-golden -j$(nproc)
+    cmake --build "${ECLIPSE_NPU_ROOT}/build" --target check-eclipse check-golden check-accuracy -j$(nproc)
     echo "[EclipseNPU] Tests finished."
 }
 
@@ -65,7 +65,7 @@ function Eclipse-check() {
         echo "usage: Eclipse-check <c.raw> <a.raw> <b.raw> [--M M --N N --K K] [--bias bias.raw]" >&2
         return 1
     fi
-    python3 "${ECLIPSE_NPU_ROOT}/tests/golden/verify.py" "$@"
+    python3 "${ECLIPSE_NPU_ROOT}/tools/verify.py" "$@"
 }
 
 function Eclipse-clean() {
@@ -117,6 +117,6 @@ function Eclipse-format() {
     echo "[EclipseNPU] Formatted ${#files[@]} files."
 }
 
-# python3 tests/golden/matmul_check.py --M 16 --N 16 --K 16 \
-#   --bias tests/data/bias.raw \
-#   --driver "build/bin/eclipse-opt --one-shot-bufferize=bufferize-function-boundaries --convert-linalg-to-eclipse --eclipse-allocate --eclipse-to-easm=output-easm=m.easm tests/test.mlir && build/bin/eclipse-run m.easm {c} {a} {b} {bias}"
+# e2e 精度测试（一键跑所有 case，cosine + err + hazard + cycle）：
+#   python3 tools/accuracy_check.py --seed 0
+# 单个 case： python3 tools/accuracy_check.py --filter matmul_add_128

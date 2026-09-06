@@ -1,9 +1,6 @@
 add_executable(matmul_golden golden/matmul_golden.cpp)
 target_link_libraries(matmul_golden PRIVATE EclipseRuntime)
 
-add_executable(eclipse-run eclipse-run.cpp)
-target_link_libraries(eclipse-run PRIVATE EclipseRuntime)
-
 find_program(PYTHON3_EXECUTABLE python3)
 
 find_program(LLVM_LIT_EXECUTABLE NAMES lit lit.py)
@@ -23,5 +20,12 @@ add_custom_target(check-golden
           ${CMAKE_CURRENT_SOURCE_DIR}/golden/golden.easm
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/golden
   DEPENDS matmul_golden
+  USES_TERMINAL
+)
+
+# e2e 精度测试：tools/accuracy_check.py 遍历 tests/e2e/ 的所有 case。
+add_custom_target(check-accuracy
+  COMMAND ${PYTHON3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../tools/accuracy_check.py
+  DEPENDS eclipse-opt eclipse-run
   USES_TERMINAL
 )
