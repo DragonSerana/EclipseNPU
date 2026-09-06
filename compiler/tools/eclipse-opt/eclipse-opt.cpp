@@ -10,6 +10,7 @@
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Transforms/Passes.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "eclipse/Conversion/Passes.h"
@@ -29,6 +30,7 @@ int main(int argc, char **argv) {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::eclipse::createEclipseElideCopies();
   });
+  mlir::registerCanonicalizerPass();
   mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;

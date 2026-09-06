@@ -70,6 +70,9 @@
     func->walk([&](memref::AllocOp alloc){});
     walk中是lambda,这里就是找到每个一个allocop的节点，执行函数体内的动作
 
+    walk中不要涉及对IR调用链的修改，比如op的增加删除和replace。因为你在walk访问前面的时候，把后面的删掉，后面walk访问到就很可能出问题 。
+    直接用rewriter更合理。IRRewriter rewriter(getOperation()->getContext());
+
 12. mlir IR结构
     module,func.func,op都是op
     block和region用来存放op的容器，针对下面分支的场景。scf.if就有了两个region,每个region有一个block，光有block无法满足分支结构，因为一个 Operation 不能直接拥有多个 Block，但它可以拥有多个 Region。
@@ -171,3 +174,7 @@
         Value loadKey = getViewSource(loadOp.getDst());
         auto it = lastStore.find(loadKey);
       }
+
+24. DenseSet<Operation *> matchSet;
+    集合，matchSet.insert的返回值是个pair,pair<iterator, bool>
+    第一个是iterator，执行集合中插入成功或者重复的那个元素，第二个是是否插入成功，可以用来判断是重复

@@ -54,6 +54,8 @@ function Eclipse-easm() {
     "${ECLIPSE_OPT}" \
         --one-shot-bufferize="bufferize-function-boundaries" \
         --convert-linalg-to-eclipse \
+        --eclipse-elide-copies \
+        --canonicalize \
         --eclipse-allocate="layout=${layout}" \
         --eclipse-to-easm="output-easm=${output}" \
         "${input}" -o /dev/null
@@ -83,6 +85,20 @@ function Eclipse-check() {
     python3 "${ECLIPSE_NPU_ROOT}/tests/golden/verify.py" "$@"
 }
 
+
+# 清理编译/对拍产物（.easm / .raw），保留 tests/golden/golden.easm 参考。
+# 这些都是脚本可再生的：raw 由 matmul_check/verify 重新生成，easm 由 Eclipse-easm 产出。
+function Eclipse-clean-artifacts() {
+    echo "[EclipseNPU] Cleaning generated .easm / .raw artifacts..."
+    find "${ECLIPSE_NPU_ROOT}" -name '*.easm' \
+         -not -path '*/.git/*' \
+         -not -path "${ECLIPSE_NPU_ROOT}/tests/golden/golden.easm" \
+         -delete
+    find "${ECLIPSE_NPU_ROOT}" -name '*.raw' \
+         -not -path '*/.git/*' \
+         -delete
+    echo "[EclipseNPU] Clean done."
+}
 
 function Eclipse-clean() {
     echo "[EclipseNPU] Cleaning build directory..."
