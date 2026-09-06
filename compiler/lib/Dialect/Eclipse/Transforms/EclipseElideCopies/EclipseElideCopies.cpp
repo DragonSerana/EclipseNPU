@@ -83,15 +83,7 @@ public:
     });
 
     for (auto &m : matchList) {
-      Value oldDst = m.loadOp.getDst();
-      Value newSrc = m.storeOp.getSrc();
-      // 只转发"读"消费者；dealloc 留给死 buffer（否则会把 store 的 src dealloc 两次）
-      llvm::SmallVector<OpOperand *> toRewrite;
-      for (OpOperand &use : oldDst.getUses())
-        if (!isa<memref::DeallocOp>(use.getOwner()))
-          toRewrite.push_back(&use);
-      for (OpOperand *operand : toRewrite)
-        operand->set(newSrc);
+      m.loadOp.getDst().replaceAllUsesWith(m.storeOp.getSrc());
       m.loadOp.erase();
     }
 
