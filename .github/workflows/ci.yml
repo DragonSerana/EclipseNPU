@@ -38,9 +38,9 @@ jobs:
             -v "${{ github.workspace }}":/workspace \
             -e LLVM_INSTALL_DIR=/usr/local \
             -e MLIR_INSTALL_DIR=/usr/local \
-            -e MLIR_OPT=/usr/local/bin/mlir-opt \
-            -e FILECHECK=/usr/local/bin/FileCheck \
-            -e NOT=/usr/local/bin/not \
+            -e MLIR_OPT=/llvm-project/build/bin/mlir-opt \
+            -e FILECHECK=/llvm-project/build/bin/FileCheck \
+            -e NOT=/llvm-project/build/bin/not \
             -w /workspace \
             ${{ steps.img.outputs.ref }}:${{ env.LLVM_COMMIT }} \
             bash scripts/run-tests.sh
