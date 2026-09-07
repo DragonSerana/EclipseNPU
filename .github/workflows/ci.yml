@@ -50,13 +50,4 @@ jobs:
             -e NOT=/usr/local/bin/not \
             -w /workspace \
             eclipse-ci:latest \
-            bash -lc <<'SCRIPT'
-              set -ex
-              which cmake && which ninja
-              cmake -S . -B build \
-                -DMLIR_DIR=/usr/local/lib/cmake/mlir \
-                -DLLVM_DIR=/usr/local/lib/cmake/llvm \
-                -G Ninja
-              cmake --build build -j"$(nproc)"
-              cmake --build build --target check-eclipse check-golden check-accuracy
-            SCRIPT
+            bash scripts/run-tests.sh

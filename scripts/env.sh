@@ -6,7 +6,7 @@ export MLIR_INSTALL_DIR="${MLIR_INSTALL_DIR:-/home/serana/mlir/llvm-project/inst
 export LLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm"
 export MLIR_DIR="${MLIR_INSTALL_DIR}/lib/cmake/mlir"
 
-export ECLIPSE_NPU_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export ECLIPSE_NPU_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="${ECLIPSE_NPU_ROOT}/build/bin:${PATH}"
 
 export ECLIPSE_OPT="${ECLIPSE_NPU_ROOT}/build/bin/eclipse-opt"

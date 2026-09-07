@@ -45,7 +45,7 @@ H1 交付物：六指令 cmodel + simulator + cycle 模型（`runtime/`）、fp1
 5. 文档中文；descriptor 字段名是 ISA 合同，改名必须同步 `docs/spec/isa-v0.1.md`；
 6. `n` 是元素数（非字节）；stride 是字节；小端；16B 对齐由编译器保证；
 7. SYNC 在串行模型 = 0 cycle，`computeCycles` 保持纯函数；
-8. clang-format（LLVM 风格）保持绿；`env.sh` 提供 `Eclipse-build`/`Eclipse-format`/`Eclipse-format-check`；
+8. clang-format（LLVM 风格）保持绿；`scripts/env.sh` 提供 `Eclipse-build`/`Eclipse-format`/`Eclipse-format-check`；
 9. 主线 : 辅线 = 80 : 20，辅线每周固定时段，不允许被主线占用；
 10. 交付物以三桶纪律审计：连续 2 周落不进任何桶的在途工作，砍。
 
@@ -238,7 +238,7 @@ lit 正例：6 op + sram 各一条 parse 通过；负例（expected-error）：M
 
 ## 11. 环境速查
 
-- 构建：`cmake --build build -j`（root CMakeLists 已开 tests 子目录；MLIR 已 find_package）；`env.sh` 提供 `Eclipse-build`/`Eclipse-format`/`Eclipse-format-check`；
+- 构建：`cmake --build build -j`（root CMakeLists 已开 tests 子目录；MLIR 已 find_package）；`scripts/env.sh` 提供 `Eclipse-build`/`Eclipse-format`/`Eclipse-format-check`；
 - 对拍：`python3 tests/matmul_check.py`（torch 2.13.0+cpu 已装；golden 双路径 torch fp16 优先）；
 - mlir-opt：`/home/serana/mlir/llvm-project/install/bin/mlir-opt`；FileCheck：`/home/serana/mlir/llvm-project/build/bin/FileCheck`；clang-format：`/home/serana/mlir/llvm-project/install/bin/clang-format`；
 - LLVM/MLIR 源码（命名/风格/参考模板）：`/home/serana/mlir/llvm-project`（toy 教程、GPU dialect 的 memref 型 op 是 §6 op 的参考）；编码规范以其 `llvm/docs/CodingStandards.rst` 为准；commit `a67efda258fa`（23.0.0git）；

@@ -46,7 +46,7 @@ directly by the add, and the add result directly by the relu, with a single `DMA
 ## how to re-run
 
 ```
-source env.sh
+source scripts/env.sh
 Eclipse-test            # check-eclipse + check-golden + check-accuracy
 # or
 python3 tools/accuracy_check.py --seed 0
