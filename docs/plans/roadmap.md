@@ -14,7 +14,7 @@
 
 1. 一层 IR 变换 + lit 测试
 2. 一个可测量的数字——性能计数器或 roofline 位置（simulator 或真卡，占峰值的百分比）
-3. 一份合同更新——ISA spec（docs/spec/isa-v0.1.md → v0.2）或算子审计（docs/ops-audit.md）
+3. 一份合同更新——ISA spec（docs/spec/isa-v0.1.md → v0.2）或算子审计（docs/plans/ops-audit.md）
 
 落不进任何一处的，砍掉。
 
@@ -62,7 +62,7 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
 
 - 算子审计：先选模型，再定 v0.2 的 op 列表
   - 模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE；备选 TinyLlama 1.1B）
-  - 产出 docs/ops-audit.md：模型算子 → ISA op → 缺口 → 决策
+  - 产出 docs/plans/ops-audit.md：模型算子 → ISA op → 缺口 → 决策
   - 必须覆盖：嵌入层（token 依赖地址）、KV cache、RoPE、RMSNorm、SwiGLU、softmax
 - 冻结 ISA v0.2，至少补齐审计发现的缺口：
   - EWISE_MUL（SwiGLU）、DIV/RSQRT（RMSNorm）、sin/cos LUT（RoPE）
