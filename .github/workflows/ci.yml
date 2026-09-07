@@ -1,6 +1,5 @@
-# Per-push / per-PR CI. Pulls the cached LLVM/MLIR image layers from GHCR
+# Per-push / per-PR CI. Pulls the prebuilt LLVM/MLIR image from GHCR
 # (built by build-image.yml), compiles the compiler, runs all three test gates.
-# On a cold repo (no image in GHCR yet) the first run builds the image.
 name: ci
 
 on:
@@ -18,7 +17,6 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
 
       - name: Compute GHCR image ref
         id: img
@@ -26,19 +24,14 @@ jobs:
           echo "ref=ghcr.io/$(echo ${GITHUB_REPOSITORY} | tr '[:upper:]' '[:lower:]')/eclipse-ci" \
             >> "$GITHUB_OUTPUT"
 
-      # Restore the LLVM/MLIR layers from the prebuilt image (or build on cold start).
-      - name: Build image from GHCR cache
-        uses: docker/build-push-action@v6
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: Dockerfile.ci
-          load: true
-          push: false
-          tags: eclipse-ci:latest
-          cache-from: |
-            type=registry,ref=${{ steps.img.outputs.ref }}:${{ env.LLVM_COMMIT }}
-            type=registry,ref=${{ steps.img.outputs.ref }}:cache
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Pull the prebuilt image and run the compiler build + the test gates.
       - name: Compile + run tests
         run: |
           docker run --rm \
@@ -49,5 +42,5 @@ jobs:
             -e FILECHECK=/usr/local/bin/FileCheck \
             -e NOT=/usr/local/bin/not \
             -w /workspace \
-            eclipse-ci:latest \
+            ${{ steps.img.outputs.ref }}:${{ env.LLVM_COMMIT }} \
             bash scripts/run-tests.sh
