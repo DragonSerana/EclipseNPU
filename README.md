@@ -12,7 +12,7 @@ There is no generic CPU/GPU codegen: the instruction queue is the backend.
 
 - **H1 (done)** — ISA v0.1 + cmodel/simulator. Six instructions implemented, `computeCycles`
   (MAC throughput + DMA bandwidth model). A hand-written 128×128 K-tiled matmul instruction stream is
-  checked against PyTorch. See [docs/spec/isa-v0.1.md](docs/spec/isa-v0.1.md).
+  checked against PyTorch. See [docs/spec/isa.md](docs/spec/isa.md).
 - **H2 (current)** — linalg → Eclipse lowering chain, `eclipse-opt` → `.easm` → `eclipse-run`, lit
   wired into the build, e2e accuracy + hazard checks. Covers tile-K matmul to 128×128×128 and
   elementwise fusion (matmul → bias add → relu, kept resident in SRAM).
@@ -77,7 +77,7 @@ Inputs are generated with a fixed seed, so failures are reproducible.
 - Instructions: `DMA_LOAD`/`DMA_STORE` (strided 2-D tile), `MATMUL` (`M×K · K×N`, fp32 block
   accumulation, fp16 write-back, `accumulate` flag), `ELEMENTWISE_ADD`, `ACT` (ReLU), `SYNC`.
 - Compute operands must be packed in SRAM; only DMA supports strides. Full spec:
-  [docs/spec/isa-v0.1.md](docs/spec/isa-v0.1.md).
+  [docs/spec/isa.md](docs/spec/isa.md).
 
 ## layout
 

@@ -20,7 +20,7 @@
 
 **H1 已验收且当前仍绿**（刚重跑过）：`python3 tests/matmul_check.py` → PASS，max rel err = 6.109e-04（容差 1e-2），total = 11536 cycles。git HEAD = `3bf970f`（工作区有未提交的 Readme.md 改动和若干未跟踪 docs，见 §11 末尾）。
 
-H1 交付物：六指令 cmodel + simulator + cycle 模型（`runtime/`）、fp16 codec（`dtype.h`，65536 穷举验证）、手写 golden 指令流（`tests/matmul_golden.cpp`，128×128×128，K=16×8 块）、ISA 合同（`docs/spec/isa-v0.1.md`）、精度模型（`docs/spec/accuracy.md`）、cycle 报告（`docs/cycle-report-h1.md`）。
+H1 交付物：六指令 cmodel + simulator + cycle 模型（`runtime/`）、fp16 codec（`dtype.h`，65536 穷举验证）、手写 golden 指令流（`tests/matmul_golden.cpp`，128×128×128，K=16×8 块）、ISA 合同（`docs/spec/isa.md`）、精度模型（`docs/spec/accuracy.md`）、cycle 报告（`docs/cycle-report-h1.md`）。
 
 编译器侧几乎是白纸（实测）：
 - `compiler/include/.../EclipseOps.td` 是**空文件**，dialect 定义实际在 `compiler/lib/Dialect/Eclipse/EclipseOps.td`（只有 dialect 名，6 个 op 未定义）——双份漂移，H2.0 收敛为 include 单一来源；
@@ -42,7 +42,7 @@ H1 交付物：六指令 cmodel + simulator + cycle 模型（`runtime/`）、fp1
 2. **先讲思路再写码**；新增接口讲用法；概念问题讲透（用户会追问"为什么"）；
 3. 命名 LLVM/MLIR 风格：类型 CamelCase；函数/变量 camelCase；常量 ALL_CAPS；成员尾下划线；
 4. 头文件 Doxygen 注释（`///` + `@param`/`@return`），实现不重复；注释少而有用，不要 AI 味；
-5. 文档中文；descriptor 字段名是 ISA 合同，改名必须同步 `docs/spec/isa-v0.1.md`；
+5. 文档中文；descriptor 字段名是 ISA 合同，改名必须同步 `docs/spec/isa.md`；
 6. `n` 是元素数（非字节）；stride 是字节；小端；16B 对齐由编译器保证；
 7. SYNC 在串行模型 = 0 cycle，`computeCycles` 保持纯函数；
 8. clang-format（LLVM 风格）保持绿；`scripts/env.sh` 提供 `Eclipse-build`/`Eclipse-format`/`Eclipse-format-check`；
@@ -207,7 +207,7 @@ for(int i = 0; i < tile; i++) {
 
 顺手：argc 检查 + readFile 失败报错退出；增加与 `.easm` 同格式的 trace dump（第 4 个 argv 指定输出路径，或固定输出 `golden.easm`）。验收：`matmul_check.py` PASS + total=11536 不变。commit：`golden v2: fix K-loop WAR hazard; add trace dump`。
 
-**T1 断言与文档**：`eclipse_isa.h` 加 `static_assert(sizeof(Instruction)==8 / DMAParam==24 / MatmulParam==28 / EwiseAddParam==16 / ActParam==32)`；isa-v0.1.md MATMUL 段补一句"cmodel 禁止 dst/lhs/rhs 任意两块重叠（比硬件合法集保守，A×A 合法但被拒），该保守行为在 dialect verifier 保持一致"；accuracy.md 表头口径与脚本默认对齐（都写 torch fp16，fp64 作附录）。
+**T1 断言与文档**：`eclipse_isa.h` 加 `static_assert(sizeof(Instruction)==8 / DMAParam==24 / MatmulParam==28 / EwiseAddParam==16 / ActParam==32)`；isa.md MATMUL 段补一句"cmodel 禁止 dst/lhs/rhs 任意两块重叠（比硬件合法集保守，A×A 合法但被拒），该保守行为在 dialect verifier 保持一致"；accuracy.md 表头口径与脚本默认对齐（都写 torch fp16，fp64 作附录）。
 
 **T0.2 hazard 检查器**：`tools/hazard_check.py`，输入 .easm，输出违例列表（指令序号 + 冒险类型 + 涉及地址区间）。自检：对修复前 golden（临时还原一版 trace）应报 8 处 WAR，修复后 0 处——这一正一反就是它的验收测试。
 

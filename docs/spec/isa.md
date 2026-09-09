@@ -3,6 +3,24 @@
 > 目标模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE）。逐算子映射见
 > docs/plans/ops-audit.md。v0.1 的指令流在 v0.2 下全部合法，opcode/kind 只追加不重排。
 
+## v0.1 → v0.2 改动
+
+    opcode 编号与 kind 只往后追加，不重排、不删除；v0.1 的六条指令语义不变。
+
+    内存模型
+        DDR 1G → 2G                    驱动：全部（fp16 权重约 1.14GB，1G 放不下）
+    指令集
+        MATMUL 加 transA/transB        驱动：attention 的 Q@K^T
+        新增 ELEMENTWISE_MUL（ADD 保留）驱动：SwiGLU、RoPE、RMSNorm
+        ELEMENTWISE 加 broadcast       驱动：RMSNorm gamma、RoPE cos/sin、softmax 减 max
+        新增 REDUCE{kind, axis}        驱动：softmax、RMSNorm、lm_head argmax
+        ACT kind 扩为 RELU/EXP/RSQRT/RECIP/SILU
+                                       驱动：softmax、RMSNorm、SwiGLU
+        新增 DMA_LOAD_ASYNC / WAIT      驱动：双缓冲（仅冻结编码，v0.2 不实现）
+
+    v0.1 规划过、v0.2 决定不做的：fp32 ACC + MOVER（精度实验已达标，推 v0.3）、
+    间接寻址（推 v0.3）、int8 量化（后置）、硬件 padding。详见文末。
+
 ## 异构
     暂时不考虑添加RISC-V CPU
 

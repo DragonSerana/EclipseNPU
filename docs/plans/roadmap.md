@@ -14,7 +14,7 @@
 
 1. 一层 IR 变换 + lit 测试
 2. 一个可测量的数字——性能计数器或 roofline 位置（simulator 或真卡，占峰值的百分比）
-3. 一份合同更新——ISA spec（docs/spec/isa-v0.1.md → v0.2）或算子审计（docs/plans/ops-audit.md）
+3. 一份合同更新——ISA spec（docs/spec/isa.md）或算子审计（docs/plans/ops-audit.md）
 
 落不进任何一处的，砍掉。
 
