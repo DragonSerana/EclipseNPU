@@ -64,6 +64,13 @@ hidden_size
 单头（Single-Head）和多头（Multi-Head）：
   把 896 维切成 hh 份（比如 8 份，每份 112 维），每一份独立跑一遍 Attention
 
+旋转矩阵
+  矩阵是一组有序的向量
+  行向量、列向量长度都是 1，列向量两两垂直，并且行列式等于 +1
+
+KV cahce
+  就是输入通过 attention算出来的K/V这两个 向量缓存起来
+
 ## LLM相关算子
 1. RMSNorm Root Mean Square Normalization（均方根归一化）
   就是 把 输入的 每个 token词 向量 压到 sqrt(hidden_size)为半径的多维球面。
@@ -74,6 +81,18 @@ hidden_size
   比如 一个 二维坐标，(3,4)，这个其实就是输入x.模长 就是 5,那归一化之后 的 坐标 就是 [3/5,4/5]，模长 就是 sqrt(1),也就是 1.所以 归一化 就是 把 各种 长度的 词向量，通过坐标/模长的方法，拉到半径 是1(这里是sqrt(896))  的 多维球面。比如 第二个 token进来，坐标 是(300,400)，归一化之后的坐标也变成了[3/5,4/5]。
 
 2. RoPE（旋转位置编码）
+  假设一个点xy，旋转一定角度得到x'y'.根据三角函数变换
+  x=r*cosa -> x' = xcosθ−ysinθ
+  y=r*sina -> y' = xsinθ+ycosθ
+  
+  写成矩阵,R(θ),旋转矩阵
+  [x′,y′​]=[[cosθ,-sinθ][​sinθ,cosθ​]]*[x,y​]
+
+  qm'=qm@R(θm),qn'=qn@R(θn)
+  qm'^T@kn'=qm^T@R(θ(n-m))@kn，这个公式说明，两个向量旋转角度后的点积，只和两个向量旋转的角度差有关，角度差正比与位置差(n-m)
+  然后把896维度的向量，拆成896/2个二维平面，每个 二维 旋转 角度 不一样，所以能感受的距离就不一样
+  每对旋转角度的步幅θi​=10000^−2i/896，对于第 i 对维度，Q 和 K 用的是同一个 θi​，但 Q 转的是 mθi​，K 转的是 nθi​。两者的绝对旋转角度不同，但相减后变成 (n−m)θi​，所以点积结果只和n-m相关
+  这些二维平面的旋转会改变语义，但是因为步幅已知，所以在训练权重的时候，已经将改变的语义融合进了权重 
 
 3. Attention（自注意力，包含 Q@K^T + Softmax）
   attention的 前半部分 ，就是通过 矩阵乘权重  拆出 词向量的 QKV分量 ，然后一个 batch里面，所有 token的 shape就是 [seq,896],Q@K^T，也就是 [seq,896]@[896,seq],得到[seq,seq]这么大 矩阵 ，根据 余弦定理和代数 公式 ，A·B = |A||B|cosθ，|A||B|已经被RMSNorm限制相同，所以A@B正比于 cosθ，因此，A和B的 点积越大，就是 方向越一致. Q @ K^T 那就是Q与K的转置，也就是Q的行与K^T的列越相似，也就是Q的行与K的行越相似
@@ -81,10 +100,41 @@ hidden_size
   除以以 根号 dk,是为了 让 方差 是一 ，在经过 softmax，把之前 Q@K^T算出来的值变成一行加起来等于 1 的概率分布。最后再根据 这个 概率 *V张量([seq,seq]@[seq,896])，这样 就得到一个 融合的 语义，权重 根据 token与 token直接的QK关系 。shape是[seq,896],每行也就代表融合后词向量，融合了这个词关心权重的新词向量。这个关心程度，就是attention，也是attention命名的由来。
 
 4. SwiGLU（前馈门控）
+  输入 X: [seq, 896]
+  分支 1（门控）：
+  G = Swish(X @ W_gate)
+    X @ W_gate: [seq, 896] @ [896, 3584] = [seq, 3584]
+    Swish 激活: [seq, 3584]
+  分支 2（内容）：
+  U = X @ W_up
+    X @ W_up: [seq, 896] @ [896, 3584] = [seq, 3584]
+  门控相乘：
+  H = G ⊙ U (Gate/Up/Hidden隐藏层)
+    [seq, 3584] ⊙ [seq, 3584] = [seq, 3584]
+  降维：
+  Output = H @ W_down
+    [seq, 3584] @ [3584, 896] = [seq, 896]
+
+  Wq​,Wk​,Wv​：存储“怎么提取 Query/Key/Value”。
+  Wgate​：存储“什么信息该通过、什么该抑制”。
+  Wup​：存储“怎么把信息升维展开”。
+  Wdown​：存储“怎么把高维信息压缩回精华”。
 
 5. Softmax（注意力的归一化，虽然它寄生在 Attention 里，但独立驱动了 EXP/SUM 指令）
   把分数转换成和为1的概率分布
+  softmax(z_i) = e^x/(e^x_1+...+e^x_i)
 
-  这里为什么用e?TODO
+6. LM Head（Language Model Head） → 驱动了 REDUCE 的 ARGMAX 指令。
+  从attention算出的词向量，转换为token，是embeding的反向
+  LM 矩阵和 Embedding 矩阵互为转置，是词到词向量的相互转换
 
-6. LM Head（输出映射） → 驱动了 REDUCE 的 ARGMAX 指令。
+  logits=h@Wlm，通过attention计算出的词向量映射回token,logits就是对应token的原始分数
+  logits‘=logits/T,Temperature 缩放，T越大分布越随机，T越小，logits‘越大，最后做Softmax计算出来的概率越向大的倾斜
+  Softmax 计算概率分布 
+  Top-k/Top-p过滤，Top-k表示取概率最大的k个，Top-p是概率累加到p的，然后重新归一化，px/p1+p2+...+pn
+  采样得到最后的值，如果是Greedy,那就直接argmax
+
+
+7. 多头注意力（Multi-Head）
+  就是输入tokne是 3,896，让他 通过 896,112的 权重 矩阵，得到 3,112的QKV分量。然后 分别 做 attention,得到 [3,112],最后 concat一把 办成 3,896,最后 乘以 w_o 896,896的 
+  其实 权重 和 单个896,896描述 的 信息 一样，但是 这样不分头，信息 更 纠缠，最后softmax算出来的东西很模糊。如果拆成 8个 attention,得到 8个 softmax矩阵，每个 提供 一部分 信息，最后 在 引入一个 新的 w_o的 矩阵 ，让训练的时候理解 下文更清晰 。只有 一个 attention+softmax要关注太多词性，注意力涣散
