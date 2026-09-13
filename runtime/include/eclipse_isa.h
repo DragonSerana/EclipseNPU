@@ -27,6 +27,9 @@ enum class OpCode : uint32_t {
   DMA_STORE,
   MATMUL,
   ELEMENTWISE_ADD,
+  ELEMENTWISE_SUB,
+  ELEMENTWISE_MUL,
+  ELEMENTWISE_DIV,
   ACT,
   SYNC
 };
@@ -57,7 +60,7 @@ struct MatmulParam {
   uint32_t accumulate;
 };
 
-struct EwiseAddParam {
+struct EwiseParam {
   uint32_t dstAddr;
   uint32_t rhsAddr;
   uint32_t lhsAddr;

@@ -97,26 +97,18 @@ def Eclipse_MatmulOp : Eclipse_Op<"matmul"> {
   let assemblyFormat = "$lhs `,` $rhs `,` $dst attr-dict `:` type($lhs) `,` type($rhs) `,` type($dst)";
 }
 
-def Eclipse_EwiseAddOp : Eclipse_Op<"elementwise_add"> {
-  let summary = "Eclipse NPU elementwise add";
-  let description = [{
-    `eclipse.elementwise_add` corresponds to the ELEMENTWISE_ADD instruction
-    in the ISA.  It adds `n` fp16 elements: `dst = lhs + rhs`.  All operands
-    are SRAM memrefs with the same shape.
-  }];
-
-  let arguments = (ins
-    Eclipse_SRAMMemRef:$lhs,
-    Eclipse_SRAMMemRef:$rhs,
-    Eclipse_SRAMMemRef:$dst
-  );
-
-  let results = (outs);
-
+class Eclipse_EwiseOp<string mnemonic>
+    : Eclipse_Op<mnemonic> {
+  let arguments = (ins Eclipse_SRAMMemRef:$lhs, Eclipse_SRAMMemRef:$rhs,
+                       Eclipse_SRAMMemRef:$dst);
   let hasVerifier = 1;
-
   let assemblyFormat = "$lhs `,` $rhs `,` $dst attr-dict `:` type($lhs) `,` type($rhs) `,` type($dst)";
 }
+
+def Eclipse_EwiseAddOp : Eclipse_EwiseOp<"elementwise_add">;
+def Eclipse_EwiseSubOp : Eclipse_EwiseOp<"elementwise_sub">;
+def Eclipse_EwiseMulOp : Eclipse_EwiseOp<"elementwise_mul">;
+def Eclipse_EwiseDivOp : Eclipse_EwiseOp<"elementwise_div">;
 
 def Eclipse_ActOp : Eclipse_Op<"act"> {
   let summary = "Eclipse NPU activation";

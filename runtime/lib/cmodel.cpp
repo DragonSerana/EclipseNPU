@@ -90,13 +90,25 @@ void CModel::exec(const Instruction &inst) {
     }
     break;
   }
-  case OpCode::ELEMENTWISE_ADD: {
+  case OpCode::ELEMENTWISE_ADD:
+  case OpCode::ELEMENTWISE_SUB:
+  case OpCode::ELEMENTWISE_MUL:
+  case OpCode::ELEMENTWISE_DIV: {
     const auto *desc =
-        reinterpret_cast<const EwiseAddParam *>(ddr(inst.descPtr));
+        reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
     for (uint32_t i = 0; i < desc->n; i++) {
       const float lhs = readFP16(desc->lhsAddr + i * DTYPE_SIZE);
       const float rhs = readFP16(desc->rhsAddr + i * DTYPE_SIZE);
-      writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs + rhs);
+      if (inst.opcode == OpCode::ELEMENTWISE_ADD)
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs + rhs);
+      else if (inst.opcode == OpCode::ELEMENTWISE_SUB)
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs - rhs);
+      else if (inst.opcode == OpCode::ELEMENTWISE_MUL)
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs * rhs);
+      else if (inst.opcode == OpCode::ELEMENTWISE_DIV) {
+        ECLIPSE_ASSERT((rhs != 0), "The divisor cannot be zero.");          
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs / rhs);      
+      }
     }
     break;
   }
@@ -146,10 +158,14 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
   }
   // 这两个指令使用SIMD引擎
   case OpCode::ELEMENTWISE_ADD:
+  case OpCode::ELEMENTWISE_SUB:
+  case OpCode::ELEMENTWISE_MUL:
+  case OpCode::ELEMENTWISE_DIV:
   case OpCode::ACT: {
     uint32_t n;
-    if (inst.opcode == OpCode::ELEMENTWISE_ADD)
-      n = reinterpret_cast<const EwiseAddParam *>(ddr(inst.descPtr))->n;
+    if (inst.opcode == OpCode::ELEMENTWISE_ADD || inst.opcode == OpCode::ELEMENTWISE_SUB
+      || inst.opcode == OpCode::ELEMENTWISE_MUL || inst.opcode == OpCode::ELEMENTWISE_DIV)
+      n = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr))->n;
     else
       n = reinterpret_cast<const ActParam *>(ddr(inst.descPtr))->n;
     cycles = ceilDiv(n, ELEM_PER_CYCLE);

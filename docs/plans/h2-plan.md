@@ -207,7 +207,7 @@ for(int i = 0; i < tile; i++) {
 
 顺手：argc 检查 + readFile 失败报错退出；增加与 `.easm` 同格式的 trace dump（第 4 个 argv 指定输出路径，或固定输出 `golden.easm`）。验收：`matmul_check.py` PASS + total=11536 不变。commit：`golden v2: fix K-loop WAR hazard; add trace dump`。
 
-**T1 断言与文档**：`eclipse_isa.h` 加 `static_assert(sizeof(Instruction)==8 / DMAParam==24 / MatmulParam==28 / EwiseAddParam==16 / ActParam==32)`；isa.md MATMUL 段补一句"cmodel 禁止 dst/lhs/rhs 任意两块重叠（比硬件合法集保守，A×A 合法但被拒），该保守行为在 dialect verifier 保持一致"；accuracy.md 表头口径与脚本默认对齐（都写 torch fp16，fp64 作附录）。
+**T1 断言与文档**：`eclipse_isa.h` 加 `static_assert(sizeof(Instruction)==8 / DMAParam==24 / MatmulParam==28 / EwiseParam==16 / ActParam==32)`；isa.md MATMUL 段补一句"cmodel 禁止 dst/lhs/rhs 任意两块重叠（比硬件合法集保守，A×A 合法但被拒），该保守行为在 dialect verifier 保持一致"；accuracy.md 表头口径与脚本默认对齐（都写 torch fp16，fp64 作附录）。
 
 **T0.2 hazard 检查器**：`tools/hazard_check.py`，输入 .easm，输出违例列表（指令序号 + 冒险类型 + 涉及地址区间）。自检：对修复前 golden（临时还原一版 trace）应报 8 处 WAR，修复后 0 处——这一正一反就是它的验收测试。
 

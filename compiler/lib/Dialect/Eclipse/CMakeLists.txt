@@ -14,7 +14,7 @@ add_mlir_dialect_library(EclipseDialect
   Ops/DmaLoad.cpp
   Ops/DmaStore.cpp
   Ops/Matmul.cpp
-  Ops/EwiseAdd.cpp
+  Ops/Ewise.cpp
   Ops/Act.cpp
   Ops/Sync.cpp
   DEPENDS

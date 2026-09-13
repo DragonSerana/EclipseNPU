@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
       sim.writeDDR(descAddr, &desc, sizeof(desc));
       sim.push(Instruction{OpCode::MATMUL, descAddr});
     } else if (insn.op == "ELEMENTWISE_ADD") {
-      EwiseAddParam desc{};
+      EwiseParam desc{};
       desc.dstAddr = hexVal(f.at("dst"));
       desc.rhsAddr = hexVal(f.at("rhs"));
       desc.lhsAddr = hexVal(f.at("lhs"));
