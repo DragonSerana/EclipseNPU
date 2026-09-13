@@ -94,7 +94,12 @@ def parse_instruction(op, fields):
             reads.append(("dst", [(dst, dst + m * n * DTYPE_SIZE)]))
         writes.append(("dst", [(dst, dst + m * n * DTYPE_SIZE)]))
 
-    elif op == "ELEMENTWISE_ADD":
+    elif op in (
+        "ELEMENTWISE_ADD",
+        "ELEMENTWISE_SUB",
+        "ELEMENTWISE_MUL",
+        "ELEMENTWISE_DIV",
+    ):
         dst = parse_hex(fields["dst"])
         lhs = parse_hex(fields["lhs"])
         rhs = parse_hex(fields["rhs"])

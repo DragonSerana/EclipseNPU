@@ -5,6 +5,9 @@
 // CHECK: eclipse.dma_store
 // CHECK: eclipse.matmul
 // CHECK: eclipse.elementwise_add
+// CHECK: eclipse.elementwise_sub
+// CHECK: eclipse.elementwise_mul
+// CHECK: eclipse.elementwise_div
 // CHECK: eclipse.act
 // CHECK: eclipse.sync
 module {
@@ -21,6 +24,9 @@ module {
     eclipse.dma_store %c_ddr, %c : memref<128x128xf16, 1>, memref<128x128xf16, 0>
     eclipse.matmul %a, %b, %c {accumulate = true} : memref<128x16xf16, 0>, memref<16x128xf16, 0>, memref<128x128xf16, 0>
     eclipse.elementwise_add %c, %tmp, %tmp : memref<128x128xf16, 0>, memref<128x128xf16, 0>, memref<128x128xf16, 0>
+    eclipse.elementwise_sub %c, %tmp, %tmp : memref<128x128xf16, 0>, memref<128x128xf16, 0>, memref<128x128xf16, 0>
+    eclipse.elementwise_mul %c, %tmp, %tmp : memref<128x128xf16, 0>, memref<128x128xf16, 0>, memref<128x128xf16, 0>
+    eclipse.elementwise_div %c, %tmp, %tmp : memref<128x128xf16, 0>, memref<128x128xf16, 0>, memref<128x128xf16, 0>
     eclipse.act %tmp, %c {kind = relu} : memref<128x128xf16, 0>, memref<128x128xf16, 0>
     eclipse.sync
     return

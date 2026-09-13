@@ -63,7 +63,7 @@
 - cos/sin 表宿主预计算放 DDR（shape [seq, 32]，因为是 d/2=32 对频率，广播到所有 head）。
 - rotate_half：`out[..d/2] = x1*cos − x2*sin`，`out[..d/2:] = x1*sin + x2*cos`。
 - **ISA op**：4× EWISE_MUL + 2× EWISE_SUB/ADD + 广播 cos/sin（[seq,32] 广播到 [seq, head, 64]）。
-- **缺口**：v0.1 只有 ELEMENTWISE_ADD；需要 **EWISE_MUL**、**EWISE 的 broadcast 说明**、以及减法（或用 ADD 加负数标量，见 §4 决策）。
+- **缺口**：v0.1 只有 ELEMENTWISE_ADD；需要 **EWISE_MUL**、**EWISE_SUB**、**EWISE 的 broadcast 说明**。
 - **决策**：**不需要 GATHER**。x1/x2 是连续 dim 轴的前后半段，属于连续内存块，直接做元素级乘加即可。GATHER 推 v0.3。
 - 每 token 的 cos/sin 地址也是 per-input 烘焙（位置 → 频率表的偏移）。
 
@@ -76,9 +76,9 @@
   1. 按行 max → 广播减；
   2. EXP → 按行 sum → 倒数 → 广播乘。
 - **PV**：`[seq, seq] @ V[seq, 64] → [seq, 64]`。
-- **ISA op**：MATMUL、EWISE_MUL（scale）、**REDUCE（按行 max / 按行 sum，带 axis 说明）**、广播减/乘、**UNARY（EXP、RECIP）**、MATMUL（PV）。
-- **缺口**：REDUCE{kind=MAX/SUM, axis=rowwise}、UNARY{EXP, RECIP}、EWISE broadcast、MATMUL 的 transpose layout（K^T）。
-- **决策**：**"EclipseAttention"降级成一组组合 pattern**（QK^T → rowwise max → 广播减 → EXP → rowwise sum → 倒数 → 广播乘 → PV），不引入独立 attention 指令。KV cache 用静态地址 DMA（decode 时每步追加）。
+- **ISA op**：MATMUL、EWISE_MUL（scale）、**REDUCE（按行 max / 按行 sum，带 axis 说明）**、EWISE 广播减/乘、**ACT{EXP}**、**EWISE_DIV**、MATMUL（PV）。
+- **缺口**：REDUCE{kind=MAX/SUM, axis=rowwise}、ACT{EXP}、EWISE_DIV、EWISE broadcast、MATMUL 的 transpose layout（K^T）。
+- **决策**：**"EclipseAttention"降级成一组组合 pattern**（QK^T → rowwise max → 广播减 → EXP → rowwise sum → 广播除 → PV），不引入独立 attention 指令。KV cache 用静态地址 DMA（decode 时每步追加）。
 
 ### 1.5 RMSNorm（pre/post）
 
@@ -87,21 +87,21 @@
 - **ISA op**：
   - x²：EWISE_MUL（x*x）；
   - 按行 sum：REDUCE{SUM, rowwise}；
-  - /896、+eps、sqrt、倒数：UNARY{RSQRT}；
+  - /896、+eps、sqrt、倒数：ACT{RSQRT}；
   - x × (1/√(mean+eps)) × gamma：EWISE_MUL + 广播（gamma[896]）。
-- **缺口**：REDUCE{SUM, rowwise}、UNARY{RSQRT}、EWISE broadcast。
-- **决策**：UNARY 加 RSQRT kind。
+- **缺口**：REDUCE{SUM, rowwise}、ACT{RSQRT}、EWISE broadcast。
+- **决策**：ACT 加 RSQRT kind。
 
 ### 1.6 SwiGLU（MLP）
 
 - gate = `x @ W_gate[896,4864]`；up = `x @ W_up[896,4864]`；silu(gate)×up → [seq,4864]；down = `[seq,4864] @ W_down[4864,896]`。
 - **ISA op**：
   - gate/up 两个 MATMUL，K=896，N=4864（N 分块）；
-  - silu：UNARY{SILU}（`x·σ(x)`，一条指令）；
+  - silu：ACT{SILU}（`x·σ(x)`，一条指令）；
   - ×：EWISE_MUL；
   - down：MATMUL，**K=4864 > 1024 上限，必须 K 分块**，且 N=896。
-- **缺口**：UNARY{SILU}、EWISE_MUL。
-- **决策**：silu 拆成 5 条指令 vs UNARY{SILU} 一条 → 选后者。
+- **缺口**：ACT{SILU}、EWISE_MUL。
+- **决策**：silu 拆成 5 条指令 vs ACT{SILU} 一条 → 选后者。
 
 ### 1.7 down_proj（K=4864 的量"第一次真正出现"）
 
@@ -158,9 +158,9 @@
 
 | # | 变更 | 驱动算子 | 类型 |
 | --- | --- | --- | --- |
-| 1 | EWISE_MUL | SwiGLU、RoPE、RMSNorm | 新 op |
+| 1 | ELEMENTWISE_SUB / MUL / DIV | SwiGLU、RoPE、RMSNorm、softmax | 新 op |
 | 2 | REDUCE{kind, axis} | softmax、RMSNorm、lm_head | 新 op |
-| 3 | ACT kind 扩宽为 {RELU, EXP, RSQRT, RECIP, SILU} | softmax、RMSNorm、SwiGLU | 合同修订（已决策，§4.1） |
+| 3 | ACT kind 扩宽为 {RELU, EXP, RSQRT, SILU} | softmax、RMSNorm、SwiGLU | 合同修订（已决策，§4.1） |
 | 4 | EWISE broadcast 说明 | RoPE、RMSNorm、softmax | 合同修订 |
 | 5 | REDUCE 的 axis 说明 | softmax、RMSNorm | 合同修订 |
 | 6 | MATMUL 加 transA/transB | attention（K^T，KV cache） | 合同修订（已决策，§4.3） |
@@ -170,9 +170,9 @@
 ### 4.1 UNARY vs 扩展 ACT —— **已决策：扩 ACT 的 kind 枚举**
 
 - 方案对比：计划 §1 原本写"新增 UNARY op{EXP, RSQRT, RECIP, SILU}"。但 ACT 与它指令形状完全相同（`dst, src, n, kind`），另起 UNARY opcode 会造成功能重叠的冗余 opcode。
-- **确认决策**：把 ACT 的 kind 枚举**扩为 `{RELU, EXP, RSQRT, RECIP, SILU}`**（opcode 仍为 5，kind 只往后追加，RELU=0 不变 → v0.1 指令流保持合法），**不新增 UNARY opcode**。
-- 语义说明：RELU/SILU 是**激活函数**，EXP/RSQRT/RECIP 是**元素级特殊函数**（softmax/RMSNorm 的归一化数学）——两者按指令形状看都属"元素级 unary/特殊函数"，共用一条指令、按 kind 区分，与业内 SFU（Special Function Unit，一条 SFU 算 exp/rcp/rsqrt 等）一致。文档里保留 ACT 名但注明"kind = 元素级 unary 函数（激活+特殊函数）"。
-- 影响：v0.2 实际新 op 只剩 **EWISE_MUL + REDUCE** 两个。
+- **确认决策**：把 ACT 的 kind 枚举**扩为 `{RELU, EXP, RSQRT, SILU}`**，**不新增 UNARY opcode**。倒数不单独设 kind——四则里的 `ELEMENTWISE_DIV` 已覆盖"除以分母"，softmax 直接用 DIV。
+- 语义说明：RELU/SILU 是**激活函数**，EXP/RSQRT 是**元素级特殊函数**（softmax/RMSNorm 的归一化数学）——两者按指令形状看都属"元素级 unary/特殊函数"，共用一条指令、按 kind 区分，与业内 SFU（Special Function Unit，一条 SFU 算 exp/rsqrt 等）一致。文档里保留 ACT 名但注明"kind = 元素级 unary 函数（激活+特殊函数）"。
+- 影响：v0.2 实际新 op 是 **ELEMENTWISE_SUB/MUL/DIV + REDUCE**。
 
 ### 4.2 down_proj 的 SRAM 预算（修正计划的一个假设）
 

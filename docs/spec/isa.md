@@ -1,7 +1,7 @@
 # Chip Architecture v0.2
 
 > 目标模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE）。逐算子映射见
-> docs/plans/ops-audit.md。v0.1 的指令流在 v0.2 下全部合法，opcode/kind 只追加不重排。
+> docs/plans/ops-audit.md。v0.1 的六条指令语义在 v0.2 下保持不变。
 
 ## v0.1 → v0.2 改动
 
@@ -9,10 +9,10 @@
         DDR 1G → 2G                    驱动：全部（fp16 权重约 1.14GB，1G 放不下）
     指令集
         MATMUL 加 transA/transB        驱动：attention 的 Q@K^T
-        新增 ELEMENTWISE_MUL（ADD 保留）驱动：SwiGLU、RoPE、RMSNorm
+        新增 ELEMENTWISE_SUB/MUL/DIV   驱动：SwiGLU、RoPE、RMSNorm、softmax
         ELEMENTWISE 加 broadcast       驱动：RMSNorm gamma、RoPE cos/sin、softmax 减 max
         新增 REDUCE{kind, axis}        驱动：softmax、RMSNorm、lm_head argmax
-        ACT kind 扩为 RELU/EXP/RSQRT/RECIP/SILU
+        ACT kind 扩为 RELU/EXP/RSQRT/SILU
                                        驱动：softmax、RMSNorm、SwiGLU
         新增 DMA_LOAD_ASYNC / WAIT      驱动：双缓冲（仅冻结编码，v0.2 不实现）
 
@@ -88,7 +88,7 @@
     跨 K-block 的累加误差由软件承担（v0.3 引入 fp32 ACC + MOVER 解决；H3 已用
     down_proj K=4864 分 5 块验证，fp16 跨块累加 err=6.9e-4 < 1e-2，故 v0.2 不引入 ACC）。
 
-5. ELEMENTWISE_ADD / ELEMENTWISE_MUL
+5. ELEMENTWISE_ADD / ELEMENTWISE_SUB / ELEMENTWISE_MUL / ELEMENTWISE_DIV
     dst, lhs, rhs output/input1/input2 addr
     n 长度，元素数
     broadcast：允许一侧为可广播形状（如 [seq,1] 或 [1,N]），按行/列广播到另一侧。
@@ -98,10 +98,10 @@
     dst, src output/input addr
     n 长度，元素数
     kind 元素级函数（ActKind 枚举）：
-        RELU, EXP, RSQRT, RECIP, SILU
-    RELU/SILU 是激活；EXP/RSQRT/RECIP 是特殊函数（softmax/RMSNorm 的归一化数学），
+        RELU, EXP, RSQRT, SILU
+    RELU/SILU 是激活；EXP/RSQRT 是特殊函数（softmax/RMSNorm 的归一化数学），
     只是指令形状相同，一道按 kind 区分。kind 只往后追加，RELU=0 不变。
-    SILU(x) = x * sigmoid(x)。RSQRT = 1/sqrt(x)。RECIP = 1/x。
+    SILU(x) = x * sigmoid(x)。RSQRT = 1/sqrt(x)。除法用 ELEMENTWISE_DIV。
 
 7. REDUCE
     dst, src addr
@@ -152,7 +152,7 @@
         uint32_t dstAddr;
         uint32_t srcAddr;
         uint32_t n; // 元素数
-        ActKind kind; // v0.2: RELU/EXP/RSQRT/RECIP/SILU
+        ActKind kind; // v0.2: RELU/EXP/RSQRT/SILU
         union { //给其他激活传参数用
             uint32_t extra[4];
         }
@@ -252,7 +252,7 @@
 
 ## cycle模型
     当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
-    新指令估算：ELEMENTWISE_MUL / ACT / REDUCE 走 SIMD 引擎，= ceil(n / ELEM_PER_CYCLE)；
+    新指令估算：ELEMENTWISE_* / ACT / REDUCE 走 SIMD 引擎，= ceil(n / ELEM_PER_CYCLE)；
     MATMUL 转置与不转置开销一致；REDUCE 的 ARGMAX 额外计入少量合并开销（后续定）。
 
 ## v0.2 不做 / 推迟到 v0.3

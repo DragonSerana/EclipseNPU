@@ -19,13 +19,22 @@ E2E = os.path.join(ROOT, "tests", "e2e")
 WORK = os.path.join(ROOT, "build", "tests-data")
 
 # case table：链路 x 尺寸。seed 固定 -> 可复现；bias/relu 决定参考公式。
+# op = "matmul"（A[M,K]@B[K,N]）或 "add"/"sub"/"mul"/"div"（A/B 同形状 [M,N]，K 忽略）。
 CASES = [
-    {"name": "matmul_128",       "M": 128, "N": 128, "K": 128, "bias": False, "relu": False},
-    {"name": "matmul_add_128",   "M": 128, "N": 128, "K": 128, "bias": True,  "relu": False},
-    {"name": "matmul_add_relu_128", "M": 128, "N": 128, "K": 128, "bias": True, "relu": True},
-    {"name": "matmul_16",        "M": 16,  "N": 16,  "K": 16,  "bias": False, "relu": False},
-    {"name": "matmul_add_16",    "M": 16,  "N": 16,  "K": 16,  "bias": True,  "relu": False},
-    {"name": "matmul_add_relu_16", "M": 16, "N": 16,  "K": 16,  "bias": True,  "relu": True},
+    {"name": "matmul_128",       "M": 128, "N": 128, "K": 128, "op": "matmul", "bias": False, "relu": False},
+    {"name": "matmul_add_128",   "M": 128, "N": 128, "K": 128, "op": "matmul", "bias": True,  "relu": False},
+    {"name": "matmul_add_relu_128", "M": 128, "N": 128, "K": 128, "op": "matmul", "bias": True, "relu": True},
+    {"name": "matmul_16",        "M": 16,  "N": 16,  "K": 16,  "op": "matmul", "bias": False, "relu": False},
+    {"name": "matmul_add_16",    "M": 16,  "N": 16,  "K": 16,  "op": "matmul", "bias": True,  "relu": False},
+    {"name": "matmul_add_relu_16", "M": 16, "N": 16,  "K": 16,  "op": "matmul", "bias": True,  "relu": True},
+    {"name": "ewise_add_16",     "M": 16,  "N": 16,  "K": 1,   "op": "add",    "bias": False, "relu": False},
+    {"name": "ewise_sub_16",     "M": 16,  "N": 16,  "K": 1,   "op": "sub",    "bias": False, "relu": False},
+    {"name": "ewise_mul_16",     "M": 16,  "N": 16,  "K": 1,   "op": "mul",    "bias": False, "relu": False},
+    {"name": "ewise_div_16",     "M": 16,  "N": 16,  "K": 1,   "op": "div",    "bias": False, "relu": False},
+    {"name": "ewise_add_128",    "M": 128, "N": 128, "K": 1,   "op": "add",    "bias": False, "relu": False},
+    {"name": "ewise_sub_128",    "M": 128, "N": 128, "K": 1,   "op": "sub",    "bias": False, "relu": False},
+    {"name": "ewise_mul_128",    "M": 128, "N": 128, "K": 1,   "op": "mul",    "bias": False, "relu": False},
+    {"name": "ewise_div_128",    "M": 128, "N": 128, "K": 1,   "op": "div",    "bias": False, "relu": False},
 ]
 
 
@@ -36,6 +45,11 @@ def run(cmd, **kw):
 def gen_inputs(case, seed, out_dir):
     cmd = [sys.executable, GEN, out_dir, "--M", str(case["M"]), "--N", str(case["N"]),
            "--K", str(case["K"]), "--seed", str(seed)]
+    if case["op"] != "matmul":
+        cmd.append("--ewise")
+        if case["op"] == "div":
+            # 逐元素除法要避开除零
+            cmd.append("--nonzero-b")
     if case["bias"]:
         cmd.append("--bias")
     r = run(cmd)
@@ -73,6 +87,8 @@ def check_verify(case, out_raw, data_dir):
            os.path.join(data_dir, "a.raw"), os.path.join(data_dir, "b.raw"),
            "--M", str(case["M"]), "--N", str(case["N"]), "--K", str(case["K"]),
            "--quiet"]
+    if case["op"] != "matmul":
+        cmd += ["--ewise", case["op"]]
     if case["bias"]:
         cmd += ["--bias", os.path.join(data_dir, "bias.raw")]
     if case["relu"]:

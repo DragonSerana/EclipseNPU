@@ -20,6 +20,17 @@ uint32_t hexVal(const std::string &s) {
 
 long intVal(const std::string &s) { return std::strtol(s.c_str(), nullptr, 0); }
 
+/// 四条 elementwise 指令共用 EwiseParam，只有 opcode 不同。
+OpCode ewiseOpCode(const std::string &name) {
+  if (name == "ELEMENTWISE_SUB")
+    return OpCode::ELEMENTWISE_SUB;
+  if (name == "ELEMENTWISE_MUL")
+    return OpCode::ELEMENTWISE_MUL;
+  if (name == "ELEMENTWISE_DIV")
+    return OpCode::ELEMENTWISE_DIV;
+  return OpCode::ELEMENTWISE_ADD;
+}
+
 struct Insn {
   std::string op;
   std::map<std::string, std::string> fields;
@@ -132,14 +143,15 @@ int main(int argc, char **argv) {
       desc.accumulate = intVal(f.at("acc"));
       sim.writeDDR(descAddr, &desc, sizeof(desc));
       sim.push(Instruction{OpCode::MATMUL, descAddr});
-    } else if (insn.op == "ELEMENTWISE_ADD") {
+    } else if (insn.op == "ELEMENTWISE_ADD" || insn.op == "ELEMENTWISE_SUB" ||
+               insn.op == "ELEMENTWISE_MUL" || insn.op == "ELEMENTWISE_DIV") {
       EwiseParam desc{};
       desc.dstAddr = hexVal(f.at("dst"));
       desc.rhsAddr = hexVal(f.at("rhs"));
       desc.lhsAddr = hexVal(f.at("lhs"));
       desc.n = intVal(f.at("n"));
       sim.writeDDR(descAddr, &desc, sizeof(desc));
-      sim.push(Instruction{OpCode::ELEMENTWISE_ADD, descAddr});
+      sim.push(Instruction{ewiseOpCode(insn.op), descAddr});
     } else if (insn.op == "ACT") {
       ActParam desc{};
       desc.dstAddr = hexVal(f.at("dst"));

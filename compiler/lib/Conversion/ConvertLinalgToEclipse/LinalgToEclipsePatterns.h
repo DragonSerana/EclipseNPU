@@ -9,7 +9,7 @@ namespace eclipse {
 void populateLinalgToEclipsePatterns(RewritePatternSet &patterns);
 
 void populateMatmulLowering(RewritePatternSet &patterns);
-void populateAddLowering(RewritePatternSet &patterns);
+void populateEwiseLowering(RewritePatternSet &patterns);
 void populateActLowering(RewritePatternSet &patterns);
 
 } // namespace eclipse

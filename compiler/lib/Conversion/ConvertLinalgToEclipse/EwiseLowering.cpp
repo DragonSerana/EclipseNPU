@@ -11,11 +11,14 @@ namespace mlir::eclipse {
 
 namespace {
 
-class AddLowering : public OpRewritePattern<linalg::AddOp> {
+/// linalg 的二元逐元素算子统一降到对应的 eclipse.elementwise_*：把 lhs/rhs/dst
+/// 各切一块搬进 SRAM，算完再搬回。四个算子的形状规则一样，用模板复用。
+template <typename LinalgOpTy, typename EclipseOpTy>
+class EwiseLowering : public OpRewritePattern<LinalgOpTy> {
 public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<LinalgOpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(linalg::AddOp op,
+  LogicalResult matchAndRewrite(LinalgOpTy op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     Value lhs = op.getInputs()[0];
@@ -27,22 +30,18 @@ public:
     Value dstDDR = toDDR(rewriter, loc, dst);
 
     auto dstType = mlir::cast<MemRefType>(dst.getType());
-    auto sramLhsType =
-        MemRefType::get(dstType.getShape(), dstType.getElementType());
-    auto sramRhsType =
-        MemRefType::get(dstType.getShape(), dstType.getElementType());
-    auto sramDstType =
+    auto tileType =
         MemRefType::get(dstType.getShape(), dstType.getElementType());
 
-    Value lhsSram = memref::AllocOp::create(rewriter, loc, sramLhsType);
-    Value rhsSram = memref::AllocOp::create(rewriter, loc, sramRhsType);
-    Value dstSram = memref::AllocOp::create(rewriter, loc, sramDstType);
+    Value lhsSram = memref::AllocOp::create(rewriter, loc, tileType);
+    Value rhsSram = memref::AllocOp::create(rewriter, loc, tileType);
+    Value dstSram = memref::AllocOp::create(rewriter, loc, tileType);
 
     DmaLoadOp::create(rewriter, loc, lhsDDR, lhsSram);
     DmaLoadOp::create(rewriter, loc, rhsDDR, rhsSram);
     SyncOp::create(rewriter, loc);
 
-    EwiseAddOp::create(rewriter, loc, lhsSram, rhsSram, dstSram);
+    EclipseOpTy::create(rewriter, loc, lhsSram, rhsSram, dstSram);
 
     SyncOp::create(rewriter, loc);
     DmaStoreOp::create(rewriter, loc, dstSram, dstDDR);
@@ -58,8 +57,12 @@ public:
 
 } // namespace
 
-void populateAddLowering(RewritePatternSet &patterns) {
-  patterns.add<AddLowering>(patterns.getContext());
+void populateEwiseLowering(RewritePatternSet &patterns) {
+  patterns.add<EwiseLowering<linalg::AddOp, EwiseAddOp>,
+               EwiseLowering<linalg::SubOp, EwiseSubOp>,
+               EwiseLowering<linalg::MulOp, EwiseMulOp>,
+               EwiseLowering<linalg::DivOp, EwiseDivOp>>(
+      patterns.getContext());
 }
 
 } // namespace mlir::eclipse

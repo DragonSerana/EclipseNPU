@@ -11,7 +11,7 @@ add_mlir_library(EclipseConversionPasses
   ConvertLinalgToEclipse/LinalgToEclipseCommon.cpp
   ConvertLinalgToEclipse/LinalgToEclipsePatterns.cpp
   ConvertLinalgToEclipse/MatmulLowering.cpp
-  ConvertLinalgToEclipse/AddLowering.cpp
+  ConvertLinalgToEclipse/EwiseLowering.cpp
   ConvertLinalgToEclipse/ActLowering.cpp
 
   ADDITIONAL_HEADER_DIRS

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """把 Simulator 产出的 out.raw 与 PyTorch fp16 参考对拍，输出 cosine + max rel err。
 
-参考 = A@B (+bias) (+relu)。用法:
+参考 = A@B (+bias) (+relu)；加 --ewise 时参考 = A <op> B（A/B 同形状 [M,N]）。用法:
     verify.py <c.raw> <a.raw> <b.raw> [--M M --N N --K K]
-              [--bias bias.raw] [--relu] [--cos-tol F] [--err-tol F] [--quiet]
+              [--bias bias.raw] [--relu] [--ewise add|sub|mul|div]
+              [--cos-tol F] [--err-tol F] [--quiet]
 """
 import argparse
 
@@ -30,6 +31,12 @@ def parse_args():
     ap.add_argument("--K", type=int, default=128)
     ap.add_argument("--bias", default=None)
     ap.add_argument("--relu", action="store_true")
+    ap.add_argument(
+        "--ewise",
+        choices=["add", "sub", "mul", "div"],
+        default=None,
+        help="逐元素对拍：A/B 都是 [M,N]，参考 = A <op> B",
+    )
     ap.add_argument("--cos-tol", type=float, default=COS_TOL)
     ap.add_argument("--err-tol", type=float, default=ERR_TOL)
     ap.add_argument("--quiet", action="store_true")
@@ -38,12 +45,29 @@ def parse_args():
 
 def main():
     a = parse_args()
-    A = np.fromfile(a.a, dtype=np.float16).reshape(a.M, a.K)
-    B = np.fromfile(a.b, dtype=np.float16).reshape(a.K, a.N)
+    A = np.fromfile(a.a, dtype=np.float16)
+    B = np.fromfile(a.b, dtype=np.float16)
+    if a.ewise:
+        A = A.reshape(a.M, a.N)
+        B = B.reshape(a.M, a.N)
+    else:
+        A = A.reshape(a.M, a.K)
+        B = B.reshape(a.K, a.N)
     C = np.fromfile(a.c, dtype=np.float16).reshape(a.M, a.N)
 
     if HAS_TORCH:
-        golden = (torch.from_numpy(A).float() @ torch.from_numpy(B).float()).half()
+        Af = torch.from_numpy(A).float()
+        Bf = torch.from_numpy(B).float()
+        if a.ewise == "add":
+            golden = (Af + Bf).half()
+        elif a.ewise == "sub":
+            golden = (Af - Bf).half()
+        elif a.ewise == "mul":
+            golden = (Af * Bf).half()
+        elif a.ewise == "div":
+            golden = (Af / Bf).half()
+        else:
+            golden = (Af @ Bf).half()
         if a.bias:
             golden = golden + torch.from_numpy(
                 np.fromfile(a.bias, dtype=np.float16).reshape(a.M, a.N)
@@ -53,7 +77,16 @@ def main():
         golden = golden.numpy().astype(np.float32)
         ref = "PyTorch fp16"
     else:
-        golden = A.astype(np.float64) @ B.astype(np.float64)
+        if a.ewise == "add":
+            golden = A.astype(np.float64) + B.astype(np.float64)
+        elif a.ewise == "sub":
+            golden = A.astype(np.float64) - B.astype(np.float64)
+        elif a.ewise == "mul":
+            golden = A.astype(np.float64) * B.astype(np.float64)
+        elif a.ewise == "div":
+            golden = A.astype(np.float64) / B.astype(np.float64)
+        else:
+            golden = A.astype(np.float64) @ B.astype(np.float64)
         if a.bias:
             golden += np.fromfile(a.bias, dtype=np.float16).reshape(a.M, a.N).astype(np.float64)
         if a.relu:

@@ -4,7 +4,7 @@ namespace mlir::eclipse {
 
 void populateLinalgToEclipsePatterns(RewritePatternSet &patterns) {
   populateMatmulLowering(patterns);
-  populateAddLowering(patterns);
+  populateEwiseLowering(patterns);
   populateActLowering(patterns);
 }
 

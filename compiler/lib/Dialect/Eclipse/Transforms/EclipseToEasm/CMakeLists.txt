@@ -8,6 +8,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_mlir_library(EclipseEmitPasses
   EclipseToEasm.cpp
+  DmaEmit.cpp
+  SyncEmit.cpp
+  MatmulEmit.cpp
+  EwiseEmit.cpp
+  ActEmit.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../include/eclipse
