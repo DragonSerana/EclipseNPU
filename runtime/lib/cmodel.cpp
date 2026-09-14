@@ -1,5 +1,6 @@
 #include "cmodel.h"
 #include "eclipse_assert.h"
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -94,8 +95,7 @@ void CModel::exec(const Instruction &inst) {
   case OpCode::ELEMENTWISE_SUB:
   case OpCode::ELEMENTWISE_MUL:
   case OpCode::ELEMENTWISE_DIV: {
-    const auto *desc =
-        reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
+    const auto *desc = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
     for (uint32_t i = 0; i < desc->n; i++) {
       const float lhs = readFP16(desc->lhsAddr + i * DTYPE_SIZE);
       const float rhs = readFP16(desc->rhsAddr + i * DTYPE_SIZE);
@@ -106,19 +106,46 @@ void CModel::exec(const Instruction &inst) {
       else if (inst.opcode == OpCode::ELEMENTWISE_MUL)
         writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs * rhs);
       else if (inst.opcode == OpCode::ELEMENTWISE_DIV) {
-        ECLIPSE_ASSERT((rhs != 0), "The divisor cannot be zero.");          
-        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs / rhs);      
+        ECLIPSE_ASSERT((rhs != 0), "The divisor cannot be zero.");
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs / rhs);
       }
     }
     break;
   }
   case OpCode::ACT: {
     const auto *desc = reinterpret_cast<const ActParam *>(ddr(inst.descPtr));
-    if (desc->kind != ActKind::RELU)
+    switch (desc->kind) {
+    case ActKind::RELU: {
+      for (uint32_t i = 0; i < desc->n; i++) {
+        const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, src > 0.0f ? src : 0.0f);
+      }
+      break;
+    }
+    case ActKind::EXP: {
+      for (uint32_t i = 0; i < desc->n; i++) {
+        const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, std::exp(src));
+      }
+      break;
+    }
+    case ActKind::RSQRT: {
+      for (uint32_t i = 0; i < desc->n; i++) {
+        const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, 1.0 / std::sqrt(src));
+      }
+      break;
+    }
+    case ActKind::SILU: {
+      for (uint32_t i = 0; i < desc->n; i++) {
+        const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
+        writeFP16(desc->dstAddr + i * DTYPE_SIZE, src / (1.0 + std::exp(-src)));
+      }
+      break;
+    }
+    default: {
       ECLIPSE_ASSERT(false, "unsupported act kind");
-    for (uint32_t i = 0; i < desc->n; i++) {
-      const float src = readFP16(desc->srcAddr + i * DTYPE_SIZE);
-      writeFP16(desc->dstAddr + i * DTYPE_SIZE, src > 0.0f ? src : 0.0f);
+    }
     }
     break;
   }
@@ -156,19 +183,22 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
     cycles = ceilDiv(desc->M * desc->N, MAC_PER_CYCLE) * desc->K;
     break;
   }
-  // 这两个指令使用SIMD引擎
+  // 四则走 SIMD 引擎
   case OpCode::ELEMENTWISE_ADD:
   case OpCode::ELEMENTWISE_SUB:
   case OpCode::ELEMENTWISE_MUL:
-  case OpCode::ELEMENTWISE_DIV:
+  case OpCode::ELEMENTWISE_DIV: {
+    const auto *desc = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
+    cycles = ceilDiv(desc->n, ELEM_PER_CYCLE);
+    break;
+  }
   case OpCode::ACT: {
-    uint32_t n;
-    if (inst.opcode == OpCode::ELEMENTWISE_ADD || inst.opcode == OpCode::ELEMENTWISE_SUB
-      || inst.opcode == OpCode::ELEMENTWISE_MUL || inst.opcode == OpCode::ELEMENTWISE_DIV)
-      n = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr))->n;
+    // RELU 走 SIMD 满速；EXP/RSQRT/SILU 走 SFU，约 1/4 吞吐 + 一次固定开销。
+    const auto *desc = reinterpret_cast<const ActParam *>(ddr(inst.descPtr));
+    if (desc->kind == ActKind::RELU)
+      cycles = ceilDiv(desc->n, ELEM_PER_CYCLE);
     else
-      n = reinterpret_cast<const ActParam *>(ddr(inst.descPtr))->n;
-    cycles = ceilDiv(n, ELEM_PER_CYCLE);
+      cycles = ceilDiv(desc->n, SFU_ELEM_PER_CYCLE) + ACT_FIXED_OVERHEAD;
     break;
   }
   case OpCode::SYNC: {

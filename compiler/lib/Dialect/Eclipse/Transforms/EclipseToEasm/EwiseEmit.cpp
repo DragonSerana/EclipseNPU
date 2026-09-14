@@ -16,7 +16,8 @@ namespace mlir::eclipse {
 
 namespace {
 
-/// 四个 elementwise op 的 operand 约定一致（lhs, rhs, dst），只有 mnemonic 不同。
+/// 四个 elementwise op 的 operand 约定一致（lhs, rhs, dst），只有 mnemonic
+/// 不同。
 template <typename EwiseOpTy>
 uint32_t emitEwise(StringRef mnemonic, EwiseOpTy ewiseOp,
                    llvm::raw_ostream &fileOS, uint32_t descAddr) {

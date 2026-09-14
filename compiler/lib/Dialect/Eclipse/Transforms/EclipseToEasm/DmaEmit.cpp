@@ -27,7 +27,8 @@ namespace {
 /// 属性），也可能是带该属性的 alloc。
 uint32_t ddrBaseAddr(Value base) {
   if (auto blockArg = mlir::dyn_cast<BlockArgument>(base)) {
-    auto funcOp = mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
+    auto funcOp =
+        mlir::dyn_cast<func::FuncOp>(blockArg.getOwner()->getParentOp());
     auto addrAttr =
         funcOp.getArgAttr(blockArg.getArgNumber(), "eclipse.ddr_addr");
     return static_cast<uint32_t>(mlir::cast<IntegerAttr>(addrAttr).getInt());
@@ -47,8 +48,7 @@ uint32_t emitDmaLoadOp(DmaLoadOp dmaloadOp, llvm::raw_ostream &fileOS,
   if (auto castOp =
           llvm::dyn_cast<memref::MemorySpaceCastOp>(src.getDefiningOp())) {
     auto arg = castOp.getSource();
-    if (!mlir::isa<BlockArgument>(arg) &&
-        !arg.getDefiningOp<memref::AllocOp>())
+    if (!mlir::isa<BlockArgument>(arg) && !arg.getDefiningOp<memref::AllocOp>())
       return descAddr;
     uint32_t addr = ddrBaseAddr(arg);
 
@@ -67,8 +67,7 @@ uint32_t emitDmaLoadOp(DmaLoadOp dmaloadOp, llvm::raw_ostream &fileOS,
     return descAddr + DESC_LEN;
   }
 
-  if (auto subViewOp =
-          llvm::dyn_cast<memref::SubViewOp>(src.getDefiningOp())) {
+  if (auto subViewOp = llvm::dyn_cast<memref::SubViewOp>(src.getDefiningOp())) {
     llvm::SmallVector<OpFoldResult> offsets = subViewOp.getMixedOffsets();
     llvm::SmallVector<OpFoldResult> sizes = subViewOp.getMixedSizes();
     llvm::SmallVector<OpFoldResult> strides = subViewOp.getMixedStrides();
@@ -76,8 +75,7 @@ uint32_t emitDmaLoadOp(DmaLoadOp dmaloadOp, llvm::raw_ostream &fileOS,
     auto castOp =
         subViewOp.getSource().getDefiningOp<memref::MemorySpaceCastOp>();
     auto arg = castOp.getSource();
-    if (!mlir::isa<BlockArgument>(arg) &&
-        !arg.getDefiningOp<memref::AllocOp>())
+    if (!mlir::isa<BlockArgument>(arg) && !arg.getDefiningOp<memref::AllocOp>())
       return descAddr;
     uint32_t baseAddr = ddrBaseAddr(arg);
 

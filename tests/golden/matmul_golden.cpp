@@ -150,8 +150,8 @@ static void dumpTrace(const Simulator &sim, const char *path) {
       break;
     }
     case OpCode::ELEMENTWISE_ADD: {
-      const auto *desc = reinterpret_cast<const EwiseParam *>(
-          sim.cmodel().ddr(inst.descPtr));
+      const auto *desc =
+          reinterpret_cast<const EwiseParam *>(sim.cmodel().ddr(inst.descPtr));
       std::fprintf(
           fp,
           "ELEMENTWISE_ADD desc=0x%08x dst=0x%08x lhs=0x%08x rhs=0x%08x "

@@ -6,8 +6,10 @@ using namespace mlir::eclipse;
 
 namespace {
 
-/// 四个 elementwise op 的形状约束完全一样：lhs/rhs/dst 都是 SRAM memref 且同形状。
-LogicalResult verifyEwiseShapes(Operation *op, Value lhs, Value rhs, Value dst) {
+/// 四个 elementwise op 的形状约束完全一样：lhs/rhs/dst 都是 SRAM memref
+/// 且同形状。
+LogicalResult verifyEwiseShapes(Operation *op, Value lhs, Value rhs,
+                                Value dst) {
   auto lhsType = mlir::dyn_cast<MemRefType>(lhs.getType());
   auto rhsType = mlir::dyn_cast<MemRefType>(rhs.getType());
   auto dstType = mlir::dyn_cast<MemRefType>(dst.getType());

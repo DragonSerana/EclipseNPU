@@ -25,8 +25,12 @@ def Eclipse_DDRMemRef : ConfinedType<
     "2D f16 memref in DDR", "::mlir::MemRefType">;
 
 def Eclipse_ActKind_RELU : I32EnumAttrCase<"RELU", 0, "relu">;
+def Eclipse_ActKind_EXP : I32EnumAttrCase<"EXP", 1, "exp">;
+def Eclipse_ActKind_RSQRT : I32EnumAttrCase<"RSQRT", 2, "rsqrt">;
+def Eclipse_ActKind_SILU : I32EnumAttrCase<"SILU", 3, "silu">;
 def Eclipse_ActKindAttr : I32EnumAttr<"ActKind", "Eclipse activation kind",
-    [Eclipse_ActKind_RELU]> {
+    [Eclipse_ActKind_RELU, Eclipse_ActKind_EXP, Eclipse_ActKind_RSQRT,
+     Eclipse_ActKind_SILU]> {
   let cppNamespace = "::mlir::eclipse";
 }
 

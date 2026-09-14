@@ -21,6 +21,9 @@ constexpr uint32_t DMA_FIXED_OVERHEAD = 16;
 constexpr uint32_t DMA_BURST_BYTES = 16;
 constexpr uint32_t MAC_PER_CYCLE = 256;
 constexpr uint32_t ELEM_PER_CYCLE = 128;
+constexpr uint32_t SFU_ELEM_PER_CYCLE =
+    ELEM_PER_CYCLE / 4; // Special Function Unit，超越函数使用
+constexpr uint32_t ACT_FIXED_OVERHEAD = 8;
 
 enum class OpCode : uint32_t {
   DMA_LOAD,

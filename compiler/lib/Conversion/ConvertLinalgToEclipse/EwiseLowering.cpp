@@ -61,8 +61,7 @@ void populateEwiseLowering(RewritePatternSet &patterns) {
   patterns.add<EwiseLowering<linalg::AddOp, EwiseAddOp>,
                EwiseLowering<linalg::SubOp, EwiseSubOp>,
                EwiseLowering<linalg::MulOp, EwiseMulOp>,
-               EwiseLowering<linalg::DivOp, EwiseDivOp>>(
-      patterns.getContext());
+               EwiseLowering<linalg::DivOp, EwiseDivOp>>(patterns.getContext());
 }
 
 } // namespace mlir::eclipse
