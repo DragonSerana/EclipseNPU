@@ -34,7 +34,7 @@ enum class OpCode : uint32_t {
   SYNC
 };
 
-enum class ActKind : uint32_t { RELU };
+enum class ActKind : uint32_t { RELU, EXP, RSQRT, SILU };
 
 struct Instruction {
   OpCode opcode;
@@ -58,6 +58,8 @@ struct MatmulParam {
   uint32_t K;
   uint32_t N;
   uint32_t accumulate;
+  bool transA;
+  bool transB;
 };
 
 struct EwiseParam {

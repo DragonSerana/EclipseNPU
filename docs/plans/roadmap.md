@@ -1,10 +1,11 @@
-# EclipseNPU Roadmap v0.4
+# EclipseNPU Roadmap v0.5
 
 > 目标：从零完成一颗 NPU（ISA → 工具链 → 算子 → simulator/cmodel），在自研模拟器上跑通 Qwen2.5-0.5B，并在真硬件（AMD RDNA4，9070 XT）上验证同一套编译/tiling 方法论。
 > 方向取舍：主攻编译器 + 算子。通信不设为主线目标；多卡是 LLM 里程碑之后的远期可选项。
 > 验收原则：每一步的数值验证一律与 PyTorch 参考对拍。里程碑只有同时满足验收标准和产出物才算 done。
 > v0.3 变更：GPU 辅线并入主线节奏（不再后置）；LLM 里程碑保留但 done 标准写死；CNN 降为可选项；多卡降为远期可选项。
 > v0.4 变更：H3 与 H4 之间插入 H3.5（单 decoder layer 端到端）——直接上全模型风险太大，先用一层把集成问题全部暴露一遍；CNN 维持可选项，不进主线。
+> v0.5 变更：H3 的 v0.2 op 清单按算子审计大幅瘦身（逐条推导见 docs/plans/h3-plan.md）；超越函数"合同定精度、算法实验冻结"策略入册；新增模拟器演进线（v0.3 事件驱动调度 → H5 按需时钟驱动）。
 
 ## 指导原则
 
@@ -64,14 +65,15 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
   - 模型：Qwen2.5-0.5B（RMSNorm + SwiGLU + GQA + RoPE；备选 TinyLlama 1.1B）
   - 产出 docs/plans/ops-audit.md：模型算子 → ISA op → 缺口 → 决策
   - 必须覆盖：嵌入层（token 依赖地址）、KV cache、RoPE、RMSNorm、SwiGLU、softmax
-- 冻结 ISA v0.2，至少补齐审计发现的缺口：
-  - EWISE_MUL（SwiGLU）、DIV/RSQRT（RMSNorm）、sin/cos LUT（RoPE）
-  - REDUCE（max / sum / 平方和）、EXP/LUT、fp32 ACC 区 + MOVER、DMA_LOAD_ASYNC + WAIT tag（双缓冲）
-  - DDR 扩到 2GB（fp16 权重约 1.4GB）；int8 量化后置到 fp16 全链路对拍通过之后，避免精度问题污染集成问题
-  - 记录 per-input 静态编译限制：token 依赖地址（嵌入行、KV cache）在编译期烘焙进 DMA descriptor；间接寻址留 v0.3
+- 冻结 ISA v0.2：按审计结论大幅瘦身（逐条推导见 docs/plans/h3-plan.md §1，进度跟踪见 §6）：
+  - EWISE_SUB/MUL/DIV（softmax 归一化、SwiGLU、RoPE）；ACT kind 扩宽 {EXP, RSQRT, SILU}——超越函数合同只定精度类（参考真值 = fp64 舍入到 fp16，normal 域 ≤2^-10 rel，subnormal/溢出行为写死），实现算法由 LUT 实验数据冻结（策略见 h3-plan §7）
+  - REDUCE{kind, axis}（softmax 的 max/sum、RMSNorm 平方和、argmax）、EWISE broadcast（softmax 广播减/乘）、MATMUL 加 transA/transB（KV cache / RoPE 布局）
+  - DDR 扩到 2GB；DMA_LOAD_ASYNC + WAIT tag 只冻结编码，编译器支持留 v0.3
+  - 审计裁决延后到 v0.3：GATHER（嵌入用逐行 DMA 够用）、fp32 ACC 区 + MOVER（已由 down_proj K 分块精度实验背书：err=6.9e-4 < 1e-2）、sin/cos 硬件单元（RoPE 用宿主预计算表，不需要）、间接寻址
+  - 记录 per-input 静态编译限制：token 依赖地址（嵌入行、KV cache）在编译期烘焙进 DMA descriptor；int8 量化后置不变
 - Matmul / argmax / attention 三算子
   - 每个算子两版：手写 golden + 编译器生成，两版互相及与 PyTorch 对拍
-  - EclipseAttention：flash-attention 式 tiling（QK^T → softmax → PV）
+  - attention：seq≤128 时 scores（32KB）整块驻留 SRAM，两遍 softmax 即可，不需要 flash 式分块；scale=0.125 在 fp16 里精确，直接折叠进 Q 权重（详见 h3-plan §1）
   - Done：三算子对拍通过；编译器生成版性能 ≥ 手写 golden 的 90%；ISA v0.2 合同 + ops-audit 齐备
   - 产出物：ops-audit.md + ISA v0.2 + "v0.1→v0.2 每条变更由哪个模型算子驱动"的总结
 
@@ -101,6 +103,14 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
 - MLIR ROCDL CodeGen 路径：H2 的 linalg 栈直接生成 HIP kernel，与 H2 手写 golden 对拍
 - Done：MLIR 生成的 GEMM 在 9070 XT 上达到手写 golden 的 90%+；双后端（simulator vs. RDNA4）roofline 对比报告
 - 产出物：双后端对比报告——核心面试叙事
+
+## 模拟器演进（v0.3 触发 → H5 深化）
+
+现状是指令记账式（total = Σ computeCycles，串行）。它撑到 H4 没问题，但 v0.2 冻结的 DMA_LOAD_ASYNC 一旦实装，并发 overlap 无法用逐条累加表达，模拟器需要升级。路线分两步，现有结构只加层不重写：
+
+- **第一步（v0.3，事件驱动 + 资源时间线）**：指令发射时向资源模型申报占用区间（MAC 阵列 / DMA 通道 / bank 端口），SYNC 是汇合点，按依赖尽早发射，总时间 = 资源时间线的 makespan。per-instruction 成本公式全部复用为资源占用内核；bank 仲裁在这一层出现。**旧记账保留为 serial 模式**（H1 基线 11536 永可复现），新模式为 pipelined 模式——两者对同一指令流的差值本身就是 overlap 收益报告。
+- **第二步（H5，按需）**：per-cycle bank 仲裁——只有当需要回答"8 bank 还是 16 bank"这类微架构问题时才建（对标公司级行为模型）。
+- 防大动纪律：exec() 数据通路里不许出现任何时序概念；.easm 接口不变；超越函数 LUT 化不改指令流（合同层承诺吞吐与精度，实现随便换）。EXP 查表是否驻留 SRAM（查表读参与 bank 争用）是 v0.3 的显式合同决策，见 h3-plan §8。
 
 ## 可选项（主线之外）
 

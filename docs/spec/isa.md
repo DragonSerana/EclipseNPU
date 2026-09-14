@@ -102,6 +102,9 @@
     RELU/SILU 是激活；EXP/RSQRT 是特殊函数（softmax/RMSNorm 的归一化数学），
     只是指令形状相同，一道按 kind 区分。kind 只往后追加，RELU=0 不变。
     SILU(x) = x * sigmoid(x)。RSQRT = 1/sqrt(x)。除法用 ELEMENTWISE_DIV。
+    精度类（合同）：对真值（fp64 算完正确舍入到 fp16）normal 域相差 ≤ 1 ulp；
+    subnormal 域相对误差无定义、按绝对误差或 flush 行为处理；exp 溢出按 IEEE 产生 inf。
+    实现算法（LUT 大小/插值/迭代次数）不在合同里，见 docs/spec/accuracy.md。
 
 7. REDUCE
     dst, src addr
