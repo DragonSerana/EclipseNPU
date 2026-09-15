@@ -103,4 +103,7 @@ docs/        specs, notes, plans, reports
 
 ## license
 
-Not yet selected.
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+Copyright 2026 DragonSerana. Covers the whole repository, including the ISA spec under `docs/`,
+so the ISA can be reimplemented freely.
