@@ -2,7 +2,8 @@
 """端到端精度测试：对每个 case，生成随机输入 -> 编译 .easm -> 跑 Simulator -> 对拍 + 查 hazard。
 
 用法: accuracy_check.py [--seed S] [--layout bump|golden-mirror] [--filter SUBSTR]
-每个 case 一行汇总: name | cosine | max rel err | cycle | hazard | PASS/FAIL。
+每个 case 一行汇总: name | cosine | metric | cycle | hazard | PASS/FAIL。
+matmul/ewise 的 metric 是归一化 max rel err，ACT 的是 max ulp（cosine 不适用，打 -）。
 """
 import argparse
 import os
@@ -18,8 +19,14 @@ HAZARD = os.path.join(ROOT, "tools", "hazard_check.py")
 E2E = os.path.join(ROOT, "tests", "e2e")
 WORK = os.path.join(ROOT, "build", "tests-data")
 
-# case table：链路 x 尺寸。seed 固定 -> 可复现；bias/relu 决定参考公式。
-# op = "matmul"（A[M,K]@B[K,N]）或 "add"/"sub"/"mul"/"div"（A/B 同形状 [M,N]，K 忽略）。
+# op 取值唯一决定链路，三组互不相交：
+#   "matmul"              A[M,K] @ B[K,N] (+bias) (+relu)
+#   add/sub/mul/div       A <op> B，A/B 同形状 [M,N]（K 忽略）
+#   relu/exp/rsqrt        ACT 一元算子，只要 A[M,N]
+ACT_OPS = ("relu", "exp", "rsqrt")
+EWISE_OPS = ("add", "sub", "mul", "div")
+
+# case table：链路 x 尺寸。seed 固定 -> 可复现；op/bias/relu 决定参考公式。
 CASES = [
     {"name": "matmul_128",       "M": 128, "N": 128, "K": 128, "op": "matmul", "bias": False, "relu": False},
     {"name": "matmul_add_128",   "M": 128, "N": 128, "K": 128, "op": "matmul", "bias": True,  "relu": False},
@@ -35,6 +42,12 @@ CASES = [
     {"name": "ewise_sub_128",    "M": 128, "N": 128, "K": 1,   "op": "sub",    "bias": False, "relu": False},
     {"name": "ewise_mul_128",    "M": 128, "N": 128, "K": 1,   "op": "mul",    "bias": False, "relu": False},
     {"name": "ewise_div_128",    "M": 128, "N": 128, "K": 1,   "op": "div",    "bias": False, "relu": False},
+    {"name": "act_relu_16",      "M": 16,  "N": 16,  "K": 1,   "op": "relu",   "bias": False, "relu": False},
+    {"name": "act_exp_16",       "M": 16,  "N": 16,  "K": 1,   "op": "exp",    "bias": False, "relu": False},
+    {"name": "act_rsqrt_16",     "M": 16,  "N": 16,  "K": 1,   "op": "rsqrt",  "bias": False, "relu": False},
+    {"name": "act_relu_128",     "M": 128, "N": 128, "K": 1,   "op": "relu",   "bias": False, "relu": False},
+    {"name": "act_exp_128",      "M": 128, "N": 128, "K": 1,   "op": "exp",    "bias": False, "relu": False},
+    {"name": "act_rsqrt_128",    "M": 128, "N": 128, "K": 1,   "op": "rsqrt",  "bias": False, "relu": False},
 ]
 
 
@@ -45,9 +58,12 @@ def run(cmd, **kw):
 def gen_inputs(case, seed, out_dir):
     cmd = [sys.executable, GEN, out_dir, "--M", str(case["M"]), "--N", str(case["N"]),
            "--K", str(case["K"]), "--seed", str(seed)]
-    if case["op"] != "matmul":
+    op = case["op"]
+    if op in ACT_OPS:
+        cmd += ["--act", op]
+    elif op in EWISE_OPS:
         cmd.append("--ewise")
-        if case["op"] == "div":
+        if op == "div":
             # 逐元素除法要避开除零
             cmd.append("--nonzero-b")
     if case["bias"]:
@@ -82,26 +98,33 @@ def run_sim(easm, out_raw, inputs):
     return None
 
 
+def parse_metrics(out):
+    """解析 verify.py --quiet 的 "k=v" 串（matmul/ewise 给 cosine+err，ACT 给 ulp+special）。"""
+    metrics = {}
+    for tok in out.split():
+        if "=" in tok:
+            key, value = tok.split("=", 1)
+            metrics[key] = value
+    return metrics
+
+
 def check_verify(case, out_raw, data_dir):
-    cmd = [sys.executable, VERIFY, out_raw,
-           os.path.join(data_dir, "a.raw"), os.path.join(data_dir, "b.raw"),
-           "--M", str(case["M"]), "--N", str(case["N"]), "--K", str(case["K"]),
-           "--quiet"]
-    if case["op"] != "matmul":
-        cmd += ["--ewise", case["op"]]
+    op = case["op"]
+    cmd = [sys.executable, VERIFY, out_raw, os.path.join(data_dir, "a.raw")]
+    if op not in ACT_OPS:
+        cmd.append(os.path.join(data_dir, "b.raw"))
+    cmd += ["--M", str(case["M"]), "--N", str(case["N"]), "--K", str(case["K"]),
+            "--quiet"]
+    if op in ACT_OPS:
+        cmd += ["--act", op]
+    elif op in EWISE_OPS:
+        cmd += ["--ewise", op]
     if case["bias"]:
         cmd += ["--bias", os.path.join(data_dir, "bias.raw")]
     if case["relu"]:
         cmd.append("--relu")
     r = run(cmd)
-    out = r.stdout.strip()
-    # 解析 "cosine=... err=... PASS/FAIL"
-    cos, err = None, None
-    if "cosine=" in out:
-        cos = float(out.split("cosine=")[1].split()[0])
-    if "err=" in out:
-        err = float(out.split("err=")[1].split()[0])
-    return r.returncode == 0, cos, err
+    return r.returncode == 0, parse_metrics(r.stdout.strip())
 
 
 def check_hazard(easm):
@@ -119,7 +142,7 @@ def main():
     a = ap.parse_args()
 
     os.makedirs(WORK, exist_ok=True)
-    print(f"{'case':<20} {'cosine':>9} {'max rel err':>12} {'cycle':>7} {'hazard':>6}  result")
+    print(f"{'case':<20} {'cosine':>9} {'metric':>12} {'cycle':>7} {'hazard':>6}  result")
     all_ok = True
     for case in CASES:
         name = case["name"]
@@ -131,15 +154,23 @@ def main():
         try:
             gen_inputs(case, a.seed, data_dir)
             compile_mlir(os.path.join(E2E, name + ".mlir"), easm, a.layout)
-            inputs = [os.path.join(data_dir, "a.raw"), os.path.join(data_dir, "b.raw")]
+            inputs = [os.path.join(data_dir, "a.raw")]
+            if case["op"] not in ACT_OPS:
+                inputs.append(os.path.join(data_dir, "b.raw"))
             if case["bias"]:
                 inputs.append(os.path.join(data_dir, "bias.raw"))
             cycle = run_sim(easm, out_raw, inputs)
-            ok_num, cos, err = check_verify(case, out_raw, data_dir)
+            ok_num, metrics = check_verify(case, out_raw, data_dir)
             ok_haz, _ = check_hazard(easm)
             ok = ok_num and ok_haz
             all_ok = all_ok and ok
-            print(f"{name:<20} {cos:>9.6f} {err:>12.3e} {str(cycle):>7} "
+            if case["op"] in ACT_OPS:
+                # ACT 是一元算子，cosine 不适用，看 max ulp
+                cos_s, metric_s = "-", f"{metrics.get('ulp', '?')} ulp"
+            else:
+                cos_s = f"{float(metrics['cosine']):.6f}"
+                metric_s = f"{float(metrics['err']):.3e}"
+            print(f"{name:<20} {cos_s:>9} {metric_s:>12} {str(cycle):>7} "
                   f"{'ok' if ok_haz else 'HZ!':>6}  {'PASS' if ok else 'FAIL'}")
         except Exception as e:
             all_ok = False

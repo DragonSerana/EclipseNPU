@@ -8,7 +8,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir::eclipse {
 
@@ -24,14 +24,22 @@ public:
       ConvertLinalgToEclipse>::ConvertLinalgToEclipseBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<scf::SCFDialect, arith::ArithDialect, EclipseDialect>();
+    registry.insert<scf::SCFDialect, arith::ArithDialect, memref::MemRefDialect,
+                    EclipseDialect>();
   }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateLinalgToEclipsePatterns(patterns);
 
-    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+    ConversionTarget target(getContext());
+    target.addLegalDialect<EclipseDialect, arith::ArithDialect,
+                           func::FuncDialect, memref::MemRefDialect,
+                           scf::SCFDialect, tensor::TensorDialect>();
+    target.addIllegalDialect<linalg::LinalgDialect>();
+
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
       signalPassFailure();
   }
 };

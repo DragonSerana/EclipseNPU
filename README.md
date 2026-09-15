@@ -63,17 +63,19 @@ This runs three things:
 
 - `check-eclipse` - lit tests for the dialect and passes
 - `check-golden` - matches the compiler against the golden reference
-- `check-accuracy` - end-to-end numeric comparison against PyTorch
+- `check-accuracy` - end-to-end numeric comparison against PyTorch / the fp64 reference
 
-Accuracy uses cosine similarity (`>= 0.999`) and a normalized max relative error (`< 1e-2`).
-Inputs are generated with a fixed seed, so failures are reproducible.
+Accuracy uses cosine similarity (`>= 0.999`) and a normalized max relative error (`< 1e-2`) for
+matmul and elementwise cases. ACT cases compare against the fp64 reference rounded to fp16 and
+require `<= 1 ulp`, with inf/NaN matched bit-for-bit. Inputs are generated with a fixed seed, so
+failures are reproducible.
 
 ## ISA v0.1
 
 - fp16 data type, fixed 8-byte instruction (`opcode: u32` + `desc_ptr: u32`); descriptors live in the
   command queue region.
-- Memory model: SRAM 512 KB at `0x10000000`; DDR 1 GB at `0x80000000` (top 64 KB reserved as the
-  command queue); tensor buffers are 16-byte aligned.
+- Memory model: SRAM 512 KB at `0x10000000`; DDR 2 GB at `0x40000000` (first 64 KB is the command
+  queue); tensor buffers are 16-byte aligned.
 - Instructions: `DMA_LOAD`/`DMA_STORE` (strided 2-D tile), `MATMUL` (`M×K · K×N`, fp32 block
   accumulation, fp16 write-back, `accumulate` flag), `ELEMENTWISE_ADD`, `ACT` (ReLU), `SYNC`.
 - Compute operands must be packed in SRAM; only DMA supports strides. Full spec:

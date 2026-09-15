@@ -10,6 +10,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "runtime/include/eclipse_isa.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
@@ -20,7 +21,7 @@ namespace mlir::eclipse {
 #define GEN_PASS_DEF_ECLIPSETOEASM
 #include "EclipseEmitPasses.h.inc"
 
-constexpr uint32_t DESC_STARTADDR = 0x80000100;
+constexpr uint32_t DESC_STARTADDR = ::eclipse_runtime::DDR_ADDR + 0x100;
 
 namespace {
 

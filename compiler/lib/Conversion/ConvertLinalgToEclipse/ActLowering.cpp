@@ -2,8 +2,11 @@
 #include "LinalgToEclipsePatterns.h"
 
 #include "eclipse/Dialect/Eclipse/EclipseOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/Matchers.h"
+#include <optional>
 
 using namespace mlir;
 
@@ -57,9 +60,6 @@ private:
   ActKind kind_;
 };
 
-// TODO(user): 目前把任意“单输入单输出”的 linalg.generic 当作 ReLU 处理。
-// 更严格的匹配（body 确实是 arith.maximumf(x, 0)）后面再加；认不出来的必须
-// 返回 failure，否则 exp 之类会被静默算成 relu。
 class ActLowering : public OpRewritePattern<linalg::GenericOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -69,8 +69,38 @@ public:
     if (op.getInputs().size() != 1 || op.getOutputs().size() != 1)
       return failure();
 
-    return lowerAct(op, rewriter, op.getInputs()[0], op.getOutputs()[0],
-                    ActKind::RELU);
+    std::optional<ActKind> kind = matchActBody(op);
+    if (!kind)
+      return failure();
+
+    return lowerAct(op, rewriter, op.getInputs()[0], op.getOutputs()[0], *kind);
+  }
+
+private:
+  /// 目前只认 `max(x, 0)`（relu）。maximumf 和 maxnumf 都接，因为 canonicalize
+  /// 或前端可能给出任一个。
+  static std::optional<ActKind> matchActBody(linalg::GenericOp op) {
+    Block *body = op.getBody();
+    Operation *root = body->getTerminator()->getOperand(0).getDefiningOp();
+    if (!root)
+      return std::nullopt;
+
+    Value input = body->getArgument(0);
+    Value lhs, rhs;
+    if (auto maxOp = dyn_cast<arith::MaximumFOp>(root)) {
+      lhs = maxOp.getLhs();
+      rhs = maxOp.getRhs();
+    } else if (auto maxOp = dyn_cast<arith::MaxNumFOp>(root)) {
+      lhs = maxOp.getLhs();
+      rhs = maxOp.getRhs();
+    } else {
+      return std::nullopt;
+    }
+
+    if ((lhs == input && matchPattern(rhs, m_AnyZeroFloat())) ||
+        (rhs == input && matchPattern(lhs, m_AnyZeroFloat())))
+      return ActKind::RELU;
+    return std::nullopt;
   }
 };
 

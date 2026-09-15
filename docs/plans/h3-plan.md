@@ -76,11 +76,11 @@ cycle-report-h3（分算子的 MAC/DMA 利用率）、ops-audit 定稿、CI 绿�
 
 ## 6. isa添加
 ELEMENTWISE_SUB / MUL / DIV	 已完成
-ACT kind 扩宽 {EXP, RSQRT, SILU}	
+ACT kind 扩宽 {EXP, RSQRT, SILU}	EXP/RSQRT 已完成（e2e 逐位一致，0 ulp）；SILU 等 H3.3 SwiGLU
 MATMUL 加 transA/transB
 ELEMENTWISE broadcast
 REDUCE{kind, axis}
-DDR 扩 2GB
+DDR 扩 2GB	已完成（DDR_SIZE=0x80000000，基址 0x80000000→0x40000000 避开 uint32 回绕）
 
 ## 7. 超越函数策略（EXP/RSQRT/SILU）：合同定精度，实现分三步
 

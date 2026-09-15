@@ -33,7 +33,7 @@
 - 每层 MLP ≈ 8.31×3 = 24.9MB；×24 层 ≈ 598MB。
 - 每层 QKV ≈ 1.97MB；×24 ≈ 47MB。
 - 若 untie：lm_head+embed ≈ 520MB。
-- **总权重 ≈ 1.14GB（fp16）** → DDR 必须扩到 2GB（当前 v0.1 是 1GB，`eclipse_isa.h DDR_SIZE=0x40000000`）。这点与已冻结的 v0.2 规划一致。
+- **总权重 ≈ 1.14GB（fp16）** → DDR 必须扩到 2GB（v0.1 是 1GB，`DDR_SIZE=0x40000000`；v0.2 已改为 `0x80000000`）。这点与已冻结的 v0.2 规划一致。
 
 ## 1. 逐算子 ISA 分解（prefill seq=128）
 

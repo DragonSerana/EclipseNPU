@@ -115,3 +115,25 @@ RSQRT 对照，不做牛顿（只查表）：
 6. `ELEMENTWISE_DIV` 的"rcp 近似 + 牛顿"是同策略的下一步，v0.2 先用 libm 占位，
    算法冻结后再补本节数据（不阻塞三算子）。
 
+### e2e 实测：ACT 链路已接上回归
+
+ACT 从 `linalg.exp` / `linalg.rsqrt`（具名 op）和 relu 的 `linalg.generic`
+（body 是 `maximumf(x, 0)`）降到 `eclipse.act`，case 在
+`tests/e2e/act_{relu,exp,rsqrt}_{16,128}.mlir`。输入随机生成，**exp 故意铺满 ±12**：
+负端 exp(-12)≈6.1e-6 落进次正规，正端 exp(12)≈1.6e5 溢出——一次同时压到
+"渐进下溢"和"溢出变 inf 不饱和"两条边界。判据用上面的契约参考（fp64 计算 + RNE
+到 fp16）比 max ulp，并要求 inf/NaN 逐个对得上（不能靠 ulp 蒙混溢出）。
+
+| case | n | 溢出为 inf | 次正规 | max ulp | 特殊值失配 | cycle |
+| --- | --- | --- | --- | --- | --- | --- |
+| act_relu_16 / 128 | 256 / 16384 | 0 | 0 | 0 | 0 | 66 / 2208 |
+| act_exp_16 / 128 | 256 / 16384 | 15 / 644 | 28 / 1620 | 0 | 0 | 80 / 2600 |
+| act_rsqrt_16 / 128 | 256 / 16384 | 0 | 0 | 0 | 0 | 80 / 2600 |
+
+**结论**：libm 占位实现（fp32 算完舍一次）在随机输入上**逐位一致**（max ulp = 0），
+离合同允许的 1 ulp 还差一整档。这张表同时是 cmodel 切到 LUT（三步走的第 3 步）之后
+的回归基线：允许掉到 1 ulp，不允许超过。
+
+> 口径提醒：`tools/verify.py --act` 的 ulp 判据是 ACT 专属的；matmul/ewise 仍用
+> 全局归一化的 `max rel err < 1e-2`，两者不是一个东西，别混看。
+

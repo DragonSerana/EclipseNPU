@@ -7,6 +7,9 @@
 
     内存模型
         DDR 1G → 2G                    驱动：全部（fp16 权重约 1.14GB，1G 放不下）
+        DDR 基址 0x80000000 → 0x40000000
+                                       驱动：0x80000000 + 2G 跨出 uint32 回绕成 0，
+                                       越界判断全变恒假；挪基址比加宽比较省事
     指令集
         MATMUL 加 transA/transB        驱动：attention 的 Q@K^T
         新增 ELEMENTWISE_SUB/MUL/DIV   驱动：SwiGLU、RoPE、RMSNorm、softmax
@@ -24,9 +27,9 @@
 
 ## 内存模型
     SRAM 0x10000000 - 0x10080000 共512KB
-    DDR 0x80000000 - 0x100000000 共2G
-        0x80000000 - 0x8000FFFF  命令队列区（64KB）：指令流 + descriptor，host 写入，NPU 取指
-        0x80010000 - 0xFFFFFFFF  数据区：tensor 数据
+    DDR 0x40000000 - 0xC0000000 共2G
+        0x40000000 - 0x4000FFFF  命令队列区（64KB）：指令流 + descriptor，host 写入，NPU 取指
+        0x40010000 - 0xBFFFFFFF  数据区：tensor 数据
     字节对齐，tensor在内存上16字节对齐，编译器保证sramAddr/ddrAddr都是16字节对齐。
     内存控制器按照16Byte突发，突发必须是16的倍数，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
     计算指令（MATMUL/ELEMENTWISE/ACT/REDUCE）的操作数在 SRAM 中必须 packed（行连续）存储；只有 DMA 支持 stride。
@@ -175,7 +178,7 @@
     // 从15x32的tensor切出来15x31
     struct DMAParam loadMatmulLhs{
         sramAddr = 0x10000000;
-        ddrAddr = 0x80010000;
+        ddrAddr = 0x40010000;
         rows = 15;
         cols = 31;
         srcStride = 32*2;
@@ -184,7 +187,7 @@
 
     struct DMAParam loadMatmulRhs{
         sramAddr = 0x100003B0; //loadMatmulLhs.sramAddr+15*31*2，然后再16字节对齐
-        ddrAddr = 0x800103C0;
+        ddrAddr = 0x400103C0;
         rows = 31;
         cols = 63;
         srcStride = 64*2;
@@ -205,7 +208,7 @@
 
     struct DMAParam loadElementwiseRhs{
         sramAddr = 0x10001A70; // matmulParam.dstAddr+15*63*2，然后再16字节对齐
-        ddrAddr = 0x80011340;
+        ddrAddr = 0x40011340;
         rows = 15;
         cols = 63;
         srcStride = 63*2;
@@ -228,7 +231,7 @@
 
     struct DMAParam storeActDst{
         sramAddr = actParam.dstAddr;
-        ddrAddr = 0x80011AC0;
+        ddrAddr = 0x40011AC0;
         rows = 15;
         cols = 63;
         srcStride = 63*2;
@@ -238,24 +241,26 @@
     // matmul+elementwise_add+relu
     // [15*31]*[31*63] = [15*63] -> [15*63] + [15*63] = [15*63] -> Relu([15*63]) = [15*63]
     // v0.2 不排 pipeline
-    // 指令流放在命令队列区（0x80000000起），定长8字节，descriptor 也在命令队列区内
-    0x80000000: DMA_LOAD  loadMatmulLhs
-    0x80000008: DMA_LOAD  loadMatmulRhs
-    0x80000010: SYNC      // 保证两个DMA_LOAD完毕
-    0x80000018: MATMUL    matmulParam
-    0x80000020: SYNC      // 保证MATMUL计算完毕
-    0x80000028: DMA_LOAD  loadElementwiseRhs
-    0x80000030: SYNC      // 保证bias搬运完毕
-    0x80000038: ELEMENTWISE_ADD elementwiseAddParam
-    0x80000040: SYNC      // 保证ELEMENTWISE_ADD计算完毕
-    0x80000048: ACT       actParam
-    0x80000050: SYNC      // 保证ACT计算完毕
-    0x80000058: DMA_STORE storeActDst
-    0x80000060: SYNC      // 保证DMA_STORE完毕
+    // 指令流放在命令队列区（0x40000000起），定长8字节，descriptor 也在命令队列区内
+    0x40000000: DMA_LOAD  loadMatmulLhs
+    0x40000008: DMA_LOAD  loadMatmulRhs
+    0x40000010: SYNC      // 保证两个DMA_LOAD完毕
+    0x40000018: MATMUL    matmulParam
+    0x40000020: SYNC      // 保证MATMUL计算完毕
+    0x40000028: DMA_LOAD  loadElementwiseRhs
+    0x40000030: SYNC      // 保证bias搬运完毕
+    0x40000038: ELEMENTWISE_ADD elementwiseAddParam
+    0x40000040: SYNC      // 保证ELEMENTWISE_ADD计算完毕
+    0x40000048: ACT       actParam
+    0x40000050: SYNC      // 保证ACT计算完毕
+    0x40000058: DMA_STORE storeActDst
+    0x40000060: SYNC      // 保证DMA_STORE完毕
 
 ## cycle模型
     当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
-    新指令估算：ELEMENTWISE_* / ACT / REDUCE 走 SIMD 引擎，= ceil(n / ELEM_PER_CYCLE)；
+    新指令估算：ELEMENTWISE_* / REDUCE 走 SIMD 引擎，= ceil(n / ELEM_PER_CYCLE)；
+    ACT 的 RELU 也走 SIMD（= ceil(n / ELEM_PER_CYCLE)）；EXP/RSQRT/SILU 走 SFU，
+    = ceil(n / SFU_ELEM_PER_CYCLE) + ACT_FIXED_OVERHEAD，速率是假设值（等 attention cycle 报告校准）；
     MATMUL 转置与不转置开销一致；REDUCE 的 ARGMAX 额外计入少量合并开销（后续定）。
 
 ## v0.2 不做 / 推迟到 v0.3

@@ -49,7 +49,8 @@ liveness-based allocator is the eventual goal.
 
 - memory space `0` = SRAM (the SIMD compute side), `1` = DDR (the ABI side). `EclipseConstants.h`.
 - `SRAM_ALIGNMENT = 32`.
-- DDR ABI: `arg0 @ 0x80010000`, `arg1 @ 0x80020000`, ... assigned by `eclipse-allocate`.
+- DDR ABI: `arg0 @ DDR_ADDR + 0x10000` = `0x40010000`, `arg1 @ 0x40020000`, ... assigned by
+  `eclipse-allocate`. Descriptors go in the command queue region from `DDR_ADDR + 0x100`.
 - `memref.dealloc` is not emitted to `.easm`; it only marks lifetime in the IR.
 
 ## notes / gotchas

@@ -89,7 +89,8 @@ int main(int argc, char **argv) {
   std::vector<Insn> insns = parseEasm(easmPath);
   Simulator sim;
 
-  // 把输入 tensor 写进 DDR ABI 地址 0x80010000, 0x80020000, ...
+  // 把输入 tensor 写进 DDR ABI 地址 DDR_ADDR+0x10000, +0x20000, ...（现为
+  // 0x40010000, ...）
   for (int i = 3; i < argc; ++i) {
     FILE *fp = std::fopen(argv[i], "rb");
     if (!fp) {

@@ -8,10 +8,14 @@ namespace eclipse_runtime {
 
 // Memory Define
 constexpr uint32_t SRAM_ADDR = 0x10000000;
-constexpr uint32_t DDR_ADDR = 0x80000000;
+constexpr uint32_t DDR_ADDR = 0x40000000;
 
 constexpr uint32_t SRAM_SIZE = 0x80000;
-constexpr uint32_t DDR_SIZE = 0x40000000;
+constexpr uint32_t DDR_SIZE = 0x80000000; // v0.2: 1GB -> 2GB
+
+static_assert(static_cast<uint64_t>(DDR_ADDR) + DDR_SIZE <= 0xFFFFFFFFull,
+              "The DDR range upper bound overflows uint32, so the "
+              "out-of-bounds check will wrap around.");
 
 constexpr size_t DTYPE_SIZE = 2;
 
