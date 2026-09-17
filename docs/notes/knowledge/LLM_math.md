@@ -96,6 +96,23 @@ KV cahce
   每对旋转角度的步幅θi​=10000^−2i/896，对于第 i 对维度，Q 和 K 用的是同一个 θi​，但 Q 转的是 mθi​，K 转的是 nθi​。两者的绝对旋转角度不同，但相减后变成 (n−m)θi​，所以点积结果只和n-m相关
   这些二维平面的旋转会改变语义，但是因为步幅已知，所以在训练权重的时候，已经将改变的语义融合进了权重 
 
+  实际LLM中896的hidden size会拆成多头，比如14,那shape就变成了 seq,14,64
+    896的hidden被拆成了 14,64.最后 一维64个数，两两 匹配，这里用的是 0,32/1,33.以此类推。每一对的 转动 频率 就是θ_i = base^{-2i/64}
+    cos[m] = [cosm*θ_0,cosm*θ_1,cosm*θ_2.....cosm*θ_31]
+    sin[m] = [sinm*θ_0,sinm*θ_1,sinm*θ_2.....sinm*θ_31]
+    又因为输入x是 64维的 ，所以 cos[m]和 sin[m]都需要tile一把，变成 64维。
+    （这个 tile 由 EWISE 的读模式吸收：cols=896/rhsBlk=32/rhsStride=32 直接读
+      [seq,32] 的表，不必真展开成 64 维，省一半 SRAM 和 DMA。见 docs/spec/isa.md 第 5 条。）
+    x*cos_full = [x0cosθ,x1cos2θ....,x31cos31θ, x32cosθ....,x63cos31θ]
+    rotate_half(x)是 [-x32,-x33....-x63,x0,....x31]
+    rotate_half(x) * sin_full =[-x32sinθ,-x33sin2θ....-x63sin31θ,x0sinθ,....x31sin31θ]
+    相加 
+    x*cos_full +rotate_half(x) * sin_full  = [x0cosθ-x32sinθ,.....x32cosθ+x0sinθ]
+    正好 对上了 RoPE公式 是 
+    x0'=cosθx0-sinθx32
+    x32'=sinθx0+cosθx32
+  cos[m]和sin[m]由宿主预计算（ISA 里没有 sin/cos 单元，只能宿主算），尽量把seq往大了估
+    
 3. Attention（自注意力，包含 Q@K^T + Softmax）
   attention的 前半部分 ，就是通过 矩阵乘权重  拆出 词向量的 QKV分量 ，然后一个 batch里面，所有 token的 shape就是 [seq,896],Q@K^T，也就是 [seq,896]@[896,seq],得到[seq,seq]这么大 矩阵 ，根据 余弦定理和代数 公式 ，A·B = |A||B|cosθ，|A||B|已经被RMSNorm限制相同，所以A@B正比于 cosθ，因此，A和B的 点积越大，就是 方向越一致. Q @ K^T 那就是Q与K的转置，也就是Q的行与K^T的列越相似，也就是Q的行与K的行越相似
 

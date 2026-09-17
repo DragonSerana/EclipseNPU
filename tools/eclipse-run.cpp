@@ -20,6 +20,13 @@ uint32_t hexVal(const std::string &s) {
 
 long intVal(const std::string &s) { return std::strtol(s.c_str(), nullptr, 0); }
 
+/// 取可选字段；缺省用 fallback（v0.1 的 trace 没有广播字段，缺省即恒等读）。
+uint32_t optVal(const std::map<std::string, std::string> &fields,
+                const std::string &key, uint32_t fallback) {
+  auto it = fields.find(key);
+  return it == fields.end() ? fallback : hexVal(it->second);
+}
+
 /// 四条 elementwise 指令共用 EwiseParam，只有 opcode 不同。
 OpCode ewiseOpCode(const std::string &name) {
   if (name == "ELEMENTWISE_SUB")
@@ -151,6 +158,9 @@ int main(int argc, char **argv) {
       desc.rhsAddr = hexVal(f.at("rhs"));
       desc.lhsAddr = hexVal(f.at("lhs"));
       desc.n = intVal(f.at("n"));
+      desc.cols = optVal(f, "cols", desc.n);
+      desc.rhsBlk = optVal(f, "blk", desc.n);
+      desc.rhsStride = optVal(f, "stride", desc.n);
       sim.writeDDR(descAddr, &desc, sizeof(desc));
       sim.push(Instruction{ewiseOpCode(insn.op), descAddr});
     } else if (insn.op == "ACT") {

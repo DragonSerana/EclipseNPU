@@ -104,9 +104,17 @@ def parse_instruction(op, fields):
         lhs = parse_hex(fields["lhs"])
         rhs = parse_hex(fields["rhs"])
         n = int(fields["n"])
+        # 旧 trace 没有广播字段，缺省即恒等读
+        cols = int(fields.get("cols", n))
+        blk = int(fields.get("blk", n))
+        stride = int(fields.get("stride", n))
+
+        # rhs 只有 (stride ? rows : 1) 行，每行 blk 个元素，不是 n
+        rows = n // cols
+        rhs_elems = blk * (rows if stride else 1)
 
         reads.append(("lhs", [(lhs, lhs + n * DTYPE_SIZE)]))
-        reads.append(("rhs", [(rhs, rhs + n * DTYPE_SIZE)]))
+        reads.append(("rhs", [(rhs, rhs + rhs_elems * DTYPE_SIZE)]))
         writes.append(("dst", [(dst, dst + n * DTYPE_SIZE)]))
 
     elif op == "ACT":

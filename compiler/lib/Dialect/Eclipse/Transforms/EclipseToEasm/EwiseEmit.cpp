@@ -29,14 +29,18 @@ uint32_t emitEwise(StringRef mnemonic, EwiseOpTy ewiseOp,
   uint32_t lhs = lhsValue.getDefiningOp<SramOp>().getAddr();
   uint32_t rhs = rhsValue.getDefiningOp<SramOp>().getAddr();
 
-  auto lhsType = mlir::cast<MemRefType>(lhsValue.getType());
-  uint32_t n = 1;
-  for (auto dim : lhsType.getShape())
-    n *= dim;
+  auto dstType = mlir::cast<MemRefType>(dstValue.getType());
+  auto rhsType = mlir::cast<MemRefType>(rhsValue.getType());
+
+  const uint32_t n = static_cast<uint32_t>(dstType.getNumElements());
+  const uint32_t cols = static_cast<uint32_t>(dstType.getShape()[1]);
+  const uint32_t blk = static_cast<uint32_t>(rhsType.getShape()[1]);
+  const uint32_t stride = (rhsType.getShape()[0] == 1) ? 0 : blk;
 
   fileOS << llvm::formatv(
-      "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} n={5:d}\n", mnemonic,
-      descAddr, dst, lhs, rhs, n);
+      "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} n={5:d} cols={6:d} "
+      "blk={7:d} stride={8:d}\n",
+      mnemonic, descAddr, dst, lhs, rhs, n, cols, blk, stride);
 
   return descAddr + DESC_LEN;
 }

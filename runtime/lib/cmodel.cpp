@@ -96,9 +96,19 @@ void CModel::exec(const Instruction &inst) {
   case OpCode::ELEMENTWISE_MUL:
   case OpCode::ELEMENTWISE_DIV: {
     const auto *desc = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
+    ECLIPSE_ASSERT(desc->cols != 0 && desc->rhsBlk != 0,
+                   "ewize: cols/rhsBlk must be non-zero");
+    ECLIPSE_ASSERT(desc->cols % desc->rhsBlk == 0,
+                   "ewize: cols must be divisible by rhsBlk");
+    ECLIPSE_ASSERT(desc->n % desc->cols == 0,
+                   "ewize: n must be a multiple of cols");
+
     for (uint32_t i = 0; i < desc->n; i++) {
       const float lhs = readFP16(desc->lhsAddr + i * DTYPE_SIZE);
-      const float rhs = readFP16(desc->rhsAddr + i * DTYPE_SIZE);
+
+      uint32_t s = (i / desc->cols) * desc->rhsStride + i % desc->rhsBlk;
+      const float rhs = readFP16(desc->rhsAddr + s * DTYPE_SIZE);
+
       if (inst.opcode == OpCode::ELEMENTWISE_ADD)
         writeFP16(desc->dstAddr + i * DTYPE_SIZE, lhs + rhs);
       else if (inst.opcode == OpCode::ELEMENTWISE_SUB)

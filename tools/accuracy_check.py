@@ -48,11 +48,28 @@ CASES = [
     {"name": "act_relu_128",     "M": 128, "N": 128, "K": 1,   "op": "relu",   "bias": False, "relu": False},
     {"name": "act_exp_128",      "M": 128, "N": 128, "K": 1,   "op": "exp",    "bias": False, "relu": False},
     {"name": "act_rsqrt_128",    "M": 128, "N": 128, "K": 1,   "op": "rsqrt",  "bias": False, "relu": False},
+    # 广播：B 缩小成 [1,N]（row）、[M,1]（col）、[M,blk]（blk，逐行按 j mod blk 读）。
+    # 128x128 是方阵，正好验证"靠 shape 里的 1 维区分"、而不是靠行列不相等。
+    {"name": "ewise_bcast_row_128",     "M": 128, "N": 128, "K": 1, "op": "mul", "bcast": "row", "bias": False, "relu": False},
+    {"name": "ewise_bcast_col_128",     "M": 128, "N": 128, "K": 1, "op": "mul", "bcast": "col", "bias": False, "relu": False},
+    {"name": "ewise_bcast_col_div_128", "M": 128, "N": 128, "K": 1, "op": "div", "bcast": "col", "bias": False, "relu": False},
+    {"name": "ewise_bcast_blk_128",     "M": 128, "N": 128, "K": 1, "op": "mul", "bcast": "blk", "blk": 32, "bias": False, "relu": False},
+    {"name": "ewise_bcast_blk_32x128",  "M": 32,  "N": 128, "K": 1, "op": "mul", "bcast": "blk", "blk": 32, "bias": False, "relu": False},
 ]
 
 
 def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def bcast_args(case):
+    """广播 case 传给 gen_inputs / verify.py 的公共参数。"""
+    if not case.get("bcast"):
+        return []
+    args = ["--broadcast", case["bcast"]]
+    if case["bcast"] == "blk":
+        args += ["--blk", str(case.get("blk", 32))]
+    return args
 
 
 def gen_inputs(case, seed, out_dir):
@@ -66,6 +83,7 @@ def gen_inputs(case, seed, out_dir):
         if op == "div":
             # 逐元素除法要避开除零
             cmd.append("--nonzero-b")
+        cmd += bcast_args(case)
     if case["bias"]:
         cmd.append("--bias")
     r = run(cmd)
@@ -119,6 +137,7 @@ def check_verify(case, out_raw, data_dir):
         cmd += ["--act", op]
     elif op in EWISE_OPS:
         cmd += ["--ewise", op]
+        cmd += bcast_args(case)
     if case["bias"]:
         cmd += ["--bias", os.path.join(data_dir, "bias.raw")]
     if case["relu"]:

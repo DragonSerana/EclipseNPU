@@ -155,8 +155,9 @@ static void dumpTrace(const Simulator &sim, const char *path) {
       std::fprintf(
           fp,
           "ELEMENTWISE_ADD desc=0x%08x dst=0x%08x lhs=0x%08x rhs=0x%08x "
-          "n=%u\n",
-          inst.descPtr, desc->dstAddr, desc->lhsAddr, desc->rhsAddr, desc->n);
+          "n=%u cols=%u blk=%u stride=%u\n",
+          inst.descPtr, desc->dstAddr, desc->lhsAddr, desc->rhsAddr, desc->n,
+          desc->cols, desc->rhsBlk, desc->rhsStride);
       break;
     }
     case OpCode::ACT: {

@@ -73,7 +73,10 @@ struct EwiseParam {
   uint32_t dstAddr;
   uint32_t rhsAddr;
   uint32_t lhsAddr;
-  uint32_t n; // 元素数
+  uint32_t n;         // 元素数
+  uint32_t cols;      // 输出一行多宽
+  uint32_t rhsBlk;    // rhs 的行内重复周期
+  uint32_t rhsStride; // rhs 每行前进多少元素（0 = 行广播）
 };
 
 struct ActParam {

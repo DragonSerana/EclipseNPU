@@ -48,11 +48,27 @@ def parse_args():
         default=None,
         help="一元 ACT 对拍：参考 = fp64 <op> A 后舍到 fp16，按 ulp 判",
     )
+    ap.add_argument(
+        "--broadcast",
+        choices=["row", "col", "blk"],
+        default=None,
+        help="ewise 的 B 缩小：row=[1,N]、col=[M,1]、blk=[M,blk]（逐行按 j mod blk 读）",
+    )
+    ap.add_argument("--blk", type=int, default=32)
     ap.add_argument("--ulp-tol", type=int, default=ULP_TOL)
     ap.add_argument("--cos-tol", type=float, default=COS_TOL)
     ap.add_argument("--err-tol", type=float, default=ERR_TOL)
     ap.add_argument("--quiet", action="store_true")
     return ap.parse_args()
+
+
+def expand_rhs(B, shape, bcast, blk):
+    """把缩小的 B 按广播读模式展开成 [M,N]，后面直接套已有的参考公式。"""
+    if bcast == "blk":
+        return np.ascontiguousarray(B[:, np.arange(shape[1]) % blk])
+    if bcast:
+        return np.ascontiguousarray(np.broadcast_to(B, shape))
+    return B
 
 
 def ordered_key(bits):
@@ -126,7 +142,12 @@ def main():
     B = np.fromfile(a.b, dtype=np.float16)
     if a.ewise:
         A = A.reshape(a.M, a.N)
-        B = B.reshape(a.M, a.N)
+        bshape = {
+            "row": (1, a.N),
+            "col": (a.M, 1),
+            "blk": (a.M, a.blk),
+        }.get(a.broadcast, (a.M, a.N))
+        B = expand_rhs(B.reshape(bshape), (a.M, a.N), a.broadcast, a.blk)
     else:
         A = A.reshape(a.M, a.K)
         B = B.reshape(a.K, a.N)

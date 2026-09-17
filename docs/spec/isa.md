@@ -13,7 +13,7 @@
     指令集
         MATMUL 加 transA/transB        驱动：attention 的 Q@K^T
         新增 ELEMENTWISE_SUB/MUL/DIV   驱动：SwiGLU、RoPE、RMSNorm、softmax
-        ELEMENTWISE 加 broadcast       驱动：RMSNorm gamma、RoPE cos/sin、softmax 减 max
+        ELEMENTWISE 加 rhs 读模式      驱动：RMSNorm gamma、RoPE cos/sin、softmax 减 max
         新增 REDUCE{kind, axis}        驱动：softmax、RMSNorm、lm_head argmax
         ACT kind 扩为 RELU/EXP/RSQRT/SILU
                                        驱动：softmax、RMSNorm、SwiGLU
@@ -92,10 +92,20 @@
     down_proj K=4864 分 5 块验证，fp16 跨块累加 err=6.9e-4 < 1e-2，故 v0.2 不引入 ACC）。
 
 5. ELEMENTWISE_ADD / ELEMENTWISE_SUB / ELEMENTWISE_MUL / ELEMENTWISE_DIV
-    dst, lhs, rhs output/input1/input2 addr
-    n 长度，元素数
-    broadcast：允许一侧为可广播形状（如 [seq,1] 或 [1,N]），按行/列广播到另一侧。
-        scale（RMSNorm gamma）、cos/sin（RoPE）、softmax 的减去 max 都靠它。
+    dst, lhs output/input1 addr，形状 [rows, cols]
+    rhs input2 addr，形状 [rows', cols']（可以小一圈，见下）
+    n 输出元素数 = rows * cols
+    cols 输出行宽
+    rhsBlk rhs 的行内重复周期
+    rhsStride rhs 每行前进多少元素（0 = 跨行广播）
+    语义：dst[i] = lhs[i] op rhs[s(i)]，其中 r = i/cols、c = i%cols、
+        s(i) = (rows' == 1 ? 0 : r * rhsStride) + (c % rhsBlk)
+    读模式：rhs 按 [rows', cols'] 读，行内以 cols' 为周期重复、跨行前进 cols' 或原地不动。
+        rhsStride = 0 就是"跨行广播"，它同时覆盖 numpy 的 size-1 广播（[1,cols]、[rows,1]）
+        和 RoPE 的块重复：cos[seq,32] 对 [seq,896] 取 blk=32/stride=32，
+        不必把表物化成 [seq,896]（省 28 倍 SRAM/DMA）。
+    约束：rhsBlk 整除 cols、cols 整除 n、两操作数在 SRAM 里都是 packed。
+    不广播时 rows'=rows、cols'=cols，退化成 dst[i] = lhs[i] op rhs[i]（v0.1 语义不变）。
 
 6. ACT
     dst, src output/input addr

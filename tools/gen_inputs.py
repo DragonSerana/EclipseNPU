@@ -3,11 +3,13 @@
 
 matmul：A[M,K], B[K,N]，可选 bias[M,N]。
 ewise（--ewise）：A[M,N], B[M,N] 同形状。
+ewise + --broadcast：A[M,N]，B 缩小成 [1,N]（row）/ [M,1]（col）/ [M,--blk]（blk）。
 act（--act）：A[M,N] 单输入（K 忽略）。
 
 seed 固定可复现（出问题能原样重跑）。用法:
     gen_inputs.py <out_dir> --M M --N N --K K [--bias] [--seed S]
     gen_inputs.py <out_dir> --M M --N N --K K --ewise [--nonzero-b]
+    gen_inputs.py <out_dir> --M M --N N --K K --ewise --broadcast row|col|blk [--blk K]
     gen_inputs.py <out_dir> --M M --N N --K K --act relu|exp|rsqrt
 """
 import argparse
@@ -58,6 +60,13 @@ def parse_args():
         default=None,
         help="ACT 模式：只生成单输入 a.raw[M,N]（K 忽略）",
     )
+    ap.add_argument(
+        "--broadcast",
+        choices=["row", "col", "blk"],
+        default=None,
+        help="ewise 的 B 缩小：row=[1,N]（gamma）、col=[M,1]（inv_rms）、blk=[M,blk]（RoPE cos）",
+    )
+    ap.add_argument("--blk", type=int, default=32, help="--broadcast blk 时的 B 行宽")
     ap.add_argument("--seed", type=int, default=0)
     return ap.parse_args()
 
@@ -68,6 +77,10 @@ def main():
         raise SystemExit("--act 与 --ewise 不能同时用")
     if a.act and a.bias:
         raise SystemExit("--act 是一元算子，没有 bias")
+    if a.broadcast and not a.ewise:
+        raise SystemExit("--broadcast 只在 --ewise 下有效")
+    if a.broadcast == "blk" and (a.blk <= 0 or a.N % a.blk):
+        raise SystemExit("--blk 必须整除 N")
     os.makedirs(a.out_dir, exist_ok=True)
     rng = np.random.default_rng(a.seed)
 
@@ -79,7 +92,12 @@ def main():
 
     if a.ewise:
         A = rng.standard_normal((a.M, a.N)).astype(np.float16)
-        B = rng.standard_normal((a.M, a.N)).astype(np.float16)
+        bshape = {
+            "row": (1, a.N),
+            "col": (a.M, 1),
+            "blk": (a.M, a.blk),
+        }.get(a.broadcast, (a.M, a.N))
+        B = rng.standard_normal(bshape).astype(np.float16)
         if a.nonzero_b:
             B = np.where(np.abs(B) < np.float16(0.5), np.float16(0.5), B)
             B = B.astype(np.float16)

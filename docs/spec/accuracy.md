@@ -137,3 +137,27 @@ ACT 从 `linalg.exp` / `linalg.rsqrt`（具名 op）和 relu 的 `linalg.generic
 > 口径提醒：`tools/verify.py --act` 的 ulp 判据是 ACT 专属的；matmul/ewise 仍用
 > 全局归一化的 `max rel err < 1e-2`，两者不是一个东西，别混看。
 
+## v0.2：EWISE 的 rhs 读模式（广播）
+
+不广播时 `rows'=rows`、`cols'=cols`，`s(i)=i`，和 v0.1 一字不差。三种广播形态的
+`(cols, rhsBlk, rhsStride)`：
+
+| 形态 | 输出 | rhs | `cols` | `rhsBlk` | `rhsStride` | e2e case |
+| --- | --- | --- | --- | --- | --- | --- |
+| 无广播 | `[seq,896]` | `[seq,896]` | 896 | 896 | 896 | `ewise_mul_128` |
+| 行广播（RMSNorm gamma） | `[seq,896]` | `[1,896]` | 896 | 896 | **0** | `ewise_bcast_row_128` |
+| 列广播（inv_rms / softmax 减 max） | `[seq,896]` | `[seq,1]` | 896 | **1** | **1** | `ewise_bcast_col_128` |
+| 块重复（RoPE cos/sin） | `[seq, 14*64]` | `[seq,32]` | 896 | **32** | **32** | `ewise_bcast_blk_128` |
+
+实测（`tests/e2e/ewise_bcast_*`，128×128 方阵 + 一个 32×128 非方阵，含一个 DIV case）：
+**cosine = 1.000000、max rel err = 0，逐位一致。**
+
+两个容易踩的点：
+
+1. **128×128 是方阵**，所以"按行列长度自动推断广播方向"这条路走不通
+   （`[1,N]` 和 `[M,1]` 长度相同）。必须靠 shape 里那个 size-1 维显式区分。
+   e2e 特意用方阵压这条。
+2. **`hazard_check` 的 rhs 读范围不能按 `n*2` 算**：行广播时 rhs 只占
+   `rhsBlk * 1 * 2` 字节，按 `n*2` 会多读 32KB，直接盖到后面的 dst buffer，
+   报出假阳性（假阴性同理）。
+
