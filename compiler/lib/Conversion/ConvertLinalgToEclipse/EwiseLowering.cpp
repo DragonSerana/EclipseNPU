@@ -16,7 +16,6 @@ namespace mlir::eclipse {
 
 namespace {
 
-
 MemRefType sramTypeOf(Value v) {
   auto t = mlir::cast<MemRefType>(v.getType());
   return MemRefType::get(t.getShape(), t.getElementType());
@@ -158,12 +157,16 @@ public:
     if (aIdx < 0 || bIdx < 0)
       return failure();
 
-    auto in0Type = mlir::cast<MemRefType>(op.getInputs()[0].getType());
-    auto in1Type = mlir::cast<MemRefType>(op.getInputs()[1].getType());
-    auto outType = mlir::cast<MemRefType>(op.getOutputs()[0].getType());
+    auto in0Type = mlir::dyn_cast<MemRefType>(op.getInputs()[0].getType());
+    auto in1Type = mlir::dyn_cast<MemRefType>(op.getInputs()[1].getType());
+    auto outType = mlir::dyn_cast<MemRefType>(op.getOutputs()[0].getType());
+    if (!in0Type || !in1Type || !outType || !in0Type.hasStaticShape() ||
+        !in1Type.hasStaticShape() || !outType.hasStaticShape())
+      return failure();
     if (outType.getRank() != 2)
       return failure();
 
+    // 主操作数是和输出同形的那个；另一个是小操作数（描述符里的 rhs）。
     int bigIdx, smallIdx;
     if (in0Type.getShape() == outType.getShape()) {
       bigIdx = 0;
@@ -174,10 +177,14 @@ public:
     } else {
       return failure();
     }
-    if (smallIdx == 0 && *bin != BinOp::Add && *bin != BinOp::Mul)
+
+    // body 的操作数必须恰好是 {big, small}，一个不多一个不少。少了这条，
+    // out+out、rhs+rhs 这类 body 会被静默降成 dst = lhs op rhs。
+    bool forward = (aIdx == bigIdx && bIdx == smallIdx);
+    bool swapped = (aIdx == smallIdx && bIdx == bigIdx);
+    if (!forward && !swapped)
       return failure();
-    if ((aIdx == bigIdx && bIdx != smallIdx) ||
-        (bIdx == bigIdx && aIdx != smallIdx))
+    if (swapped && *bin != BinOp::Add && *bin != BinOp::Mul)
       return failure();
 
     auto smallType = mlir::cast<MemRefType>(op.getInputs()[smallIdx].getType());

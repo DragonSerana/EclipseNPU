@@ -178,3 +178,30 @@
 24. DenseSet<Operation *> matchSet;
     集合，matchSet.insert的返回值是个pair,pair<iterator, bool>
     第一个是iterator，执行集合中插入成功或者重复的那个元素，第二个是是否插入成功，可以用来判断是重复
+
+25. affine
+    for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 3; j++) {
+        C[i][j] = A[i][j] + B[0][j];
+    }
+    }
+    有 3个 affineMap,C/A/B一人 一个 。迭代 变量 是 i = d0,j = d1,就是 dim ，输入维度和结果表达式就是 
+    A(d0, d1) -> (d0, d1)
+    B(d0, d1) -> (0, d1)
+    C(d0, d1) -> (d0, d1)
+    前面的表示迭代 变量 ，后面的表示怎么算数组下标
+
+    auto maps = op.getIndexingMapsArray();
+    所以 这里 就是获取 op的 affineMap，也就是 输入维度到结果表达式的映射，
+    isIdentityMap(maps[bigIdx]) ，这里获取 大操作数 的映射
+    return m.getResult(0) == getAffineDimExpr(0, m.getContext()) &&
+            m.getResult(1) == getAffineDimExpr(1, m.getContext());
+    后面就是判断映射关系，是否是恒等映射
+    (d0, d1) -> (d0, d1)， m.getResult(0) 就是 获取 后面的 那个 d0,是否对应前面的  d0
+    (d0, d1) -> (d0, d1 mod 3) ，这种广播指的是d1能被3整除，广播是循环3个元素的广播
+
+    假设输出 dstShape = (2, 6)
+    rhsShape = 1,6  (d0, d1) -> (0, d1)
+    rhsShape = 2,1  (d0, d1) -> (d0, 0)
+    rhsShape = 2,3  (d0, d1) -> (d0, d1 mod 3)
+    rhsShape = 1,1  (d0, d1) -> (0, 0)

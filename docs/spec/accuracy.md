@@ -140,7 +140,7 @@ ACT 从 `linalg.exp` / `linalg.rsqrt`（具名 op）和 relu 的 `linalg.generic
 ## v0.2：EWISE 的 rhs 读模式（广播）
 
 不广播时 `rows'=rows`、`cols'=cols`，`s(i)=i`，和 v0.1 一字不差。三种广播形态的
-`(cols, rhsBlk, rhsStride)`：
+`(cols, rhsBlk, rhsStride)`（输出元素数是 `rows*cols`，不再单独存 `n`）：
 
 | 形态 | 输出 | rhs | `cols` | `rhsBlk` | `rhsStride` | e2e case |
 | --- | --- | --- | --- | --- | --- | --- |

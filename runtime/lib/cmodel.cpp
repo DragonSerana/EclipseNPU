@@ -100,13 +100,12 @@ void CModel::exec(const Instruction &inst) {
                    "ewize: cols/rhsBlk must be non-zero");
     ECLIPSE_ASSERT(desc->cols % desc->rhsBlk == 0,
                    "ewize: cols must be divisible by rhsBlk");
-    ECLIPSE_ASSERT(desc->n % desc->cols == 0,
-                   "ewize: n must be a multiple of cols");
 
-    for (uint32_t i = 0; i < desc->n; i++) {
+    const uint32_t n = desc->rows * desc->cols;
+    for (uint32_t i = 0; i < n; i++) {
       const float lhs = readFP16(desc->lhsAddr + i * DTYPE_SIZE);
 
-      uint32_t s = (i / desc->cols) * desc->rhsStride + i % desc->rhsBlk;
+      const uint32_t s = (i / desc->cols) * desc->rhsStride + i % desc->rhsBlk;
       const float rhs = readFP16(desc->rhsAddr + s * DTYPE_SIZE);
 
       if (inst.opcode == OpCode::ELEMENTWISE_ADD)
@@ -199,7 +198,8 @@ uint64_t CModel::computeCycles(const Instruction &inst) const {
   case OpCode::ELEMENTWISE_MUL:
   case OpCode::ELEMENTWISE_DIV: {
     const auto *desc = reinterpret_cast<const EwiseParam *>(ddr(inst.descPtr));
-    cycles = ceilDiv(desc->n, ELEM_PER_CYCLE);
+    cycles =
+        ceilDiv(static_cast<uint64_t>(desc->rows) * desc->cols, ELEM_PER_CYCLE);
     break;
   }
   case OpCode::ACT: {

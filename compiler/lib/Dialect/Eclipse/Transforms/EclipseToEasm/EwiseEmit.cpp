@@ -32,15 +32,15 @@ uint32_t emitEwise(StringRef mnemonic, EwiseOpTy ewiseOp,
   auto dstType = mlir::cast<MemRefType>(dstValue.getType());
   auto rhsType = mlir::cast<MemRefType>(rhsValue.getType());
 
-  const uint32_t n = static_cast<uint32_t>(dstType.getNumElements());
+  const uint32_t rows = static_cast<uint32_t>(dstType.getShape()[0]);
   const uint32_t cols = static_cast<uint32_t>(dstType.getShape()[1]);
   const uint32_t blk = static_cast<uint32_t>(rhsType.getShape()[1]);
   const uint32_t stride = (rhsType.getShape()[0] == 1) ? 0 : blk;
 
   fileOS << llvm::formatv(
-      "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} n={5:d} cols={6:d} "
-      "blk={7:d} stride={8:d}\n",
-      mnemonic, descAddr, dst, lhs, rhs, n, cols, blk, stride);
+      "{0,-15} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} rows={5:d} "
+      "cols={6:d} blk={7:d} stride={8:d}\n",
+      mnemonic, descAddr, dst, lhs, rhs, rows, cols, blk, stride);
 
   return descAddr + DESC_LEN;
 }
