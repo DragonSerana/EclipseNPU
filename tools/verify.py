@@ -49,6 +49,12 @@ def parse_args():
         help="一元 ACT 对拍：参考 = fp64 <op> A 后舍到 fp16，按 ulp 判",
     )
     ap.add_argument(
+        "--reduce",
+        choices=["sum", "square_sum", "max"],
+        default=None,
+        help="REDUCE 对拍：A[M,K] 沿 K 归约成 [M,1]（N=1），参考用 numpy",
+    )
+    ap.add_argument(
         "--broadcast",
         choices=["row", "col", "blk"],
         default=None,
@@ -134,6 +140,33 @@ def main():
             print("golden: numpy fp64 -> fp16 RNE (契约参考)")
             print(f"max ulp = {max_ulp}  (tol {a.ulp_tol})")
             print(f"special value mismatch = {bad}")
+            print("PASS" if ok else "FAIL")
+        return 0 if ok else 1
+
+    if a.reduce:
+        A = A.reshape(a.M, a.K).astype(np.float32)
+        if a.reduce == "sum":
+            G = A.sum(1)
+        elif a.reduce == "square_sum":
+            G = np.square(A).sum(1)
+        else:
+            G = A.max(1)
+        G = G.reshape(a.M, a.N).astype(np.float16)
+        Cf, Gf = C.astype(np.float32), G.astype(np.float32)
+        denom = np.linalg.norm(Cf) * np.linalg.norm(Gf)
+        cos = float(np.dot(Cf.ravel(), Gf.ravel()) / denom) if denom > 0 else 0.0
+        err = (
+            float(np.abs(Cf - Gf).max() / np.abs(Gf).max())
+            if np.abs(Gf).max() > 0
+            else 0.0
+        )
+        ok = (cos >= a.cos_tol) and (err < a.err_tol)
+        if a.quiet:
+            print(f"cosine={cos:.6f} err={err:.3e} {'PASS' if ok else 'FAIL'}")
+        else:
+            print("golden: numpy fp32 -> fp16（逐行归约，cmodel 内部 fp32 累加）")
+            print(f"cosine = {cos:.6f}  (tol {a.cos_tol})")
+            print(f"max rel err = {err:.3e}  (tol {a.err_tol})")
             print("PASS" if ok else "FAIL")
         return 0 if ok else 1
 

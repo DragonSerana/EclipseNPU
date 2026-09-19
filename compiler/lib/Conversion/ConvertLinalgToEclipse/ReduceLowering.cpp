@@ -7,6 +7,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
 #include <optional>
 
@@ -17,8 +18,9 @@ namespace mlir::eclipse {
 namespace {
 
 /// 把 src/dst 的 DDR 视图各搬一块进 SRAM，跑一条带 kind 的 REDUCE，再搬回。
+/// replacement 是原 op 结果的替代值（具名 op 有结果；generic 归约后一般没有）。
 LogicalResult lowerReduce(Operation *op, PatternRewriter &rewriter, Value src,
-                          Value dst, ReduceKind kind) {
+                          Value dst, ReduceKind kind, Value replacement) {
   Location loc = op->getLoc();
 
   Value srcDDR = toDDR(rewriter, loc, src);
@@ -46,7 +48,10 @@ LogicalResult lowerReduce(Operation *op, PatternRewriter &rewriter, Value src,
   memref::DeallocOp::create(rewriter, loc, dstSram);
   memref::DeallocOp::create(rewriter, loc, srcSram);
 
-  rewriter.eraseOp(op);
+  if (op->getNumResults() == 0)
+    rewriter.eraseOp(op);
+  else
+    rewriter.replaceOp(op, replacement);
   return success();
 }
 
@@ -119,14 +124,61 @@ public:
       return failure();
 
     return lowerReduce(op, rewriter, op.getInputs()[0], op.getOutputs()[0],
-                       *kind);
+                       *kind, op.getOutputs()[0]);
+  }
+};
+
+/// linalg.reduce 具名 op：输出是 rank-1 的 [rows]，摊成 [rows,1] 再走同一条路。
+/// 两者字节布局相同，摊形状只是让 dst 满足 REDUCE 的 [rows,1] 约定。
+class NamedReduceLowering : public OpRewritePattern<linalg::ReduceOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::ReduceOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getInputs().size() != 1 || op.getInits().size() != 1)
+      return failure();
+
+    auto dims = op.getDimensions();
+    if (dims.size() != 1 || dims[0] != 1)
+      return failure();
+
+    auto srcType = mlir::dyn_cast<MemRefType>(op.getInputs()[0].getType());
+    auto initType = mlir::dyn_cast<MemRefType>(op.getInits()[0].getType());
+    if (!srcType || !initType)
+      return failure();
+    if (!srcType.hasStaticShape() || !initType.hasStaticShape())
+      return failure();
+    if (srcType.getRank() != 2 || initType.getRank() != 1)
+      return failure();
+    if (initType.getShape()[0] != srcType.getShape()[0])
+      return failure();
+
+    Block *body = &op.getCombiner().front();
+    std::optional<ReduceKind> kind =
+        matchReduceBody(body, body->getArgument(0), body->getArgument(1));
+    if (!kind)
+      return failure();
+
+    Location loc = op->getLoc();
+    auto expandedType =
+        MemRefType::get({initType.getShape()[0], 1}, initType.getElementType(),
+                        AffineMap(), initType.getMemorySpace());
+    SmallVector<ReassociationIndices, 1> reassociation = {{0, 1}};
+    Value dst2d = memref::ExpandShapeOp::create(
+        rewriter, loc, expandedType, op.getInits()[0], reassociation);
+
+    return lowerReduce(op, rewriter, op.getInputs()[0], dst2d, *kind,
+                       op.getInits()[0]);
   }
 };
 
 } // namespace
 
 void populateReduceLowering(RewritePatternSet &patterns) {
-  patterns.add<GenericReduceLowering>(patterns.getContext());
+  MLIRContext *context = patterns.getContext();
+  patterns.add<GenericReduceLowering>(context);
+  patterns.add<NamedReduceLowering>(context);
 }
 
 } // namespace mlir::eclipse

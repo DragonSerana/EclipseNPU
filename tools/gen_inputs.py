@@ -61,6 +61,12 @@ def parse_args():
         help="ACT 模式：只生成单输入 a.raw[M,N]（K 忽略）",
     )
     ap.add_argument(
+        "--reduce",
+        choices=["sum", "square_sum", "max"],
+        default=None,
+        help="REDUCE 模式：只生成单输入 a.raw[M,K]（沿 K 归约，输出 [M,1]）",
+    )
+    ap.add_argument(
         "--broadcast",
         choices=["row", "col", "blk"],
         default=None,
@@ -75,6 +81,8 @@ def main():
     a = parse_args()
     if a.act and a.ewise:
         raise SystemExit("--act 与 --ewise 不能同时用")
+    if a.reduce and (a.act or a.ewise or a.bias):
+        raise SystemExit("--reduce 是单输入归约，不能和 --act/--ewise/--bias 一起用")
     if a.act and a.bias:
         raise SystemExit("--act 是一元算子，没有 bias")
     if a.broadcast and not a.ewise:
@@ -88,6 +96,12 @@ def main():
         A = act_values(a.act, a.M * a.N, rng).astype(np.float16).reshape(a.M, a.N)
         A.tofile(os.path.join(a.out_dir, "a.raw"))
         print(f"wrote {os.path.join(a.out_dir, 'a.raw')} ({A.shape}) act={a.act}")
+        return
+
+    if a.reduce:
+        A = rng.standard_normal((a.M, a.K)).astype(np.float16)
+        A.tofile(os.path.join(a.out_dir, "a.raw"))
+        print(f"wrote {os.path.join(a.out_dir, 'a.raw')} ({A.shape}) reduce={a.reduce}")
         return
 
     if a.ewise:

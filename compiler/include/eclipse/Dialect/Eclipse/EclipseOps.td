@@ -199,7 +199,7 @@ def Eclipse_SramOp : Eclipse_Op<"sram"> {
   }];
 
   let arguments = (ins I32Attr:$addr);
-  let results = (outs Eclipse_SRAMMemRef:$buffer);
+  let results = (outs AnyTypeOf<[Eclipse_SRAMMemRef, Eclipse_SRAMIndexMemRef]>:$buffer);
 
   let assemblyFormat = "custom<PrintHex>($addr) attr-dict `:` type($buffer)";
 }

@@ -55,6 +55,10 @@ CASES = [
     {"name": "ewise_bcast_col_div_128", "M": 128, "N": 128, "K": 1, "op": "div", "bcast": "col", "bias": False, "relu": False},
     {"name": "ewise_bcast_blk_128",     "M": 128, "N": 128, "K": 1, "op": "mul", "bcast": "blk", "blk": 32, "bias": False, "relu": False},
     {"name": "ewise_bcast_blk_32x128",  "M": 32,  "N": 128, "K": 1, "op": "mul", "bcast": "blk", "blk": 32, "bias": False, "relu": False},
+    # REDUCE：A[M,K] 沿 K 归约成 [M,1]（N=1 是输出行宽）。K 是归约长度。
+    {"name": "reduce_sum_128",        "M": 128, "N": 1, "K": 128, "op": "reduce", "reduce": "sum",        "bias": False, "relu": False},
+    {"name": "reduce_square_sum_128", "M": 128, "N": 1, "K": 128, "op": "reduce", "reduce": "square_sum", "bias": False, "relu": False},
+    {"name": "reduce_max_128",        "M": 128, "N": 1, "K": 128, "op": "reduce", "reduce": "max",        "bias": False, "relu": False},
 ]
 
 
@@ -78,6 +82,8 @@ def gen_inputs(case, seed, out_dir):
     op = case["op"]
     if op in ACT_OPS:
         cmd += ["--act", op]
+    elif op == "reduce":
+        cmd += ["--reduce", case["reduce"]]
     elif op in EWISE_OPS:
         cmd.append("--ewise")
         if op == "div":
@@ -129,12 +135,14 @@ def parse_metrics(out):
 def check_verify(case, out_raw, data_dir):
     op = case["op"]
     cmd = [sys.executable, VERIFY, out_raw, os.path.join(data_dir, "a.raw")]
-    if op not in ACT_OPS:
+    if op not in ACT_OPS and op != "reduce":
         cmd.append(os.path.join(data_dir, "b.raw"))
     cmd += ["--M", str(case["M"]), "--N", str(case["N"]), "--K", str(case["K"]),
             "--quiet"]
     if op in ACT_OPS:
         cmd += ["--act", op]
+    elif op == "reduce":
+        cmd += ["--reduce", case["reduce"]]
     elif op in EWISE_OPS:
         cmd += ["--ewise", op]
         cmd += bcast_args(case)
@@ -174,7 +182,7 @@ def main():
             gen_inputs(case, a.seed, data_dir)
             compile_mlir(os.path.join(E2E, name + ".mlir"), easm, a.layout)
             inputs = [os.path.join(data_dir, "a.raw")]
-            if case["op"] not in ACT_OPS:
+            if case["op"] not in ACT_OPS and case["op"] != "reduce":
                 inputs.append(os.path.join(data_dir, "b.raw"))
             if case["bias"]:
                 inputs.append(os.path.join(data_dir, "bias.raw"))

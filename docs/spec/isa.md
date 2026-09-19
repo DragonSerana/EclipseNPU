@@ -297,7 +297,10 @@
 ## cycle模型
     当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
     ELEMENTWISE_* 与 REDUCE 的元素级部分走 SIMD（ALU）引擎，= ceil(rows*cols / ELEM_PER_CYCLE)；
-    REDUCE 多一段跨 lane 的归约树：+ rows * LOG2(ELEM_PER_CYCLE)；
+    REDUCE 每一行是独立的归约，最后一拍的尾巴不能和下一行拼（EWISE 没有行边界，可以跨行打包）：
+    = rows * ceil(cols / ELEM_PER_CYCLE) + rows * LOG2(ELEM_PER_CYCLE)
+    （cols 是 128 的整数倍时和上面那种写法相同；不是整数倍时每行式略贵，贵的正是行尾那些空 lane）
+    树不跨行流水（一行走完树再开下一行）是保守假设；做成流水线的话是 ceil(rows*cols/128) + LOG2 + rows 的量级；
     ARGMAX 的元素级部分 ×2（比较 + 选择，系数是假设值，待校准）；
     ACT 的 RELU 也走 SIMD（= ceil(n / ELEM_PER_CYCLE)）；EXP/RSQRT/SILU 走 SFU，
     = ceil(n / SFU_ELEM_PER_CYCLE) + ACT_FIXED_OVERHEAD，速率是假设值（等 attention cycle 报告校准）；

@@ -169,9 +169,16 @@ ACT 从 `linalg.exp` / `linalg.rsqrt`（具名 op）和 relu 的 `linalg.generic
 
 ### 宽度：指令内 fp32 累加器
 
-cmodel 语义：**行内固定二叉归约，累加器 fp32，只在写回时舍入一次 fp16**。
-配对方式钉死：`(0,1),(2,3),...` 逐层合并；奇数长度时最后一项与单位元配对
-（SUM 配 +0，MAX/ARGMAX 配 -inf）。跨行互不干扰。
+cmodel 语义：**累加器 fp32，只在写回时舍入一次 fp16**。顺序按 kind 分两层钉：
+
+| kind | 钉什么 |
+| --- | --- |
+| SUM / SQUARE_SUM | 顺序会影响末位，所以钉的是**精度类 + 确定性**：同一实现同一输入逐位一致，不同实现的相对误差 ≤ 1 ulp。cmodel 用顺序折叠（实测 vs fp32 二叉树：最大相对差 1.27e-7，舍入到 fp16 后 4000 行里只有 1 行差 1 ulp） |
+| MAX / ARGMAX | **只钉结果**，与顺序无关：NaN 传播、±0 取 +0、tie 取第一个（索引最小） |
+
+真实数据通路是"每 lane 按 mod 128 分组顺序累加 + 7 级跨 lane 树"（见
+docs/notes/knowledge/microarch.md）。合同**不钉这个顺序**——钉死等于把微架构写进 opcode
+语义，和本节 ACT 的分层一个道理。
 
 实测（896 个元素 × 2000 组随机输入，与 fp64 真值的 max 相对误差）：
 
@@ -198,7 +205,11 @@ cmodel 语义：**行内固定二叉归约，累加器 fp32，只在写回时舍
   `argmax([nan,1])=0`；JAX 的 `_argmax` 源码就是 `pick_op_val = gt(op,acc) | ne(op,op)`。
   理由：LLM 里 NaN/inf 只可能来自出错，忽略 NaN 的 ISA（ARM 的 `FMAXNMV`、不带 `.NaN`
   的 PTX `redux.sync`）会把错误藏起来，还让 max 和 argmax 的结果对不上。
-- **±0**：max(+0,-0) = +0（PTX 专门写了这条，ARM 也是 -0.0 < +0.0）。
+- **±0**：有 `+0` 就取 `+0`，全是 `-0` 才得 `-0`（PTX 的 "`+0.0 > -0.0`"、ARM 的
+  "negative zero compares less than positive zero"）。`SUM` 不需要这条特判，IEEE 加法
+  本身定义了；`ARGMAX` 的**值**输出与 `REDUCE_MAX` 同规则。
+- **和 numpy 的一个已知差异**：`np.max([-0.0, +0.0])` 给 `-0.0`（它 reduce 时相等就保留
+  第一个），我们给 `+0.0`；索引两边都是第一个。只有值输出的符号位不同，对拍时别当 bug。
 - **溢出**：SUM/SQUARE_SUM 的 fp32 累加和超出 fp16 上限时，写回按 IEEE 舍入到 inf，
   不钳位饱和。
 - **参考真值**：与 ACT 一致，fp64 计算后正确舍入到 fp16；ulp 判据随 H3.2 的 cmodel
