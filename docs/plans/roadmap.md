@@ -67,7 +67,7 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
   - 必须覆盖：嵌入层（token 依赖地址）、KV cache、RoPE、RMSNorm、SwiGLU、softmax
 - 冻结 ISA v0.2：按审计结论大幅瘦身（逐条推导见 docs/plans/h3-plan.md §1，进度跟踪见 §6）：
   - EWISE_SUB/MUL/DIV（softmax 归一化、SwiGLU、RoPE）；ACT kind 扩宽 {EXP, RSQRT, SILU}——超越函数合同只定精度类（参考真值 = fp64 舍入到 fp16，normal 域 ≤2^-10 rel，subnormal/溢出行为写死），实现算法由 LUT 实验数据冻结（策略见 h3-plan §7）
-  - REDUCE{kind, axis}（softmax 的 max/sum、RMSNorm 平方和、argmax）、EWISE broadcast（softmax 广播减/乘）、MATMUL 加 transA/transB（KV cache / RoPE 布局）
+  - REDUCE{kind}（softmax 的 max/sum、RMSNorm 平方和、argmax；归约方向由 cols 决定，无 axis 字段，详见 isa.md §7）、EWISE broadcast（softmax 广播减/乘）、MATMUL 加 transA/transB（KV cache / RoPE 布局）
   - DDR 扩到 2GB；DMA_LOAD_ASYNC + WAIT tag 只冻结编码，编译器支持留 v0.3
   - 审计裁决延后到 v0.3：GATHER（嵌入用逐行 DMA 够用）、fp32 ACC 区 + MOVER（已由 down_proj K 分块精度实验背书：err=6.9e-4 < 1e-2）、sin/cos 硬件单元（RoPE 用宿主预计算表，不需要）、间接寻址
   - 记录 per-input 静态编译限制：token 依赖地址（嵌入行、KV cache）在编译期烘焙进 DMA descriptor；int8 量化后置不变

@@ -28,6 +28,10 @@ constexpr uint32_t ELEM_PER_CYCLE = 128;
 constexpr uint32_t SFU_ELEM_PER_CYCLE =
     ELEM_PER_CYCLE / 4; // Special Function Unit，超越函数使用
 constexpr uint32_t ACT_FIXED_OVERHEAD = 8;
+constexpr uint32_t REDUCE_TREE_STEPS =
+    7; // = log2(ELEM_PER_CYCLE)，跨 lane 归约树深度（假设值）
+constexpr uint32_t ARGMAX_ELEM_PER_CYCLE =
+    ELEM_PER_CYCLE / 2; // ARGMAX 元素级要比较 + 选择（假设值）
 
 enum class OpCode : uint32_t {
   DMA_LOAD,
@@ -38,10 +42,12 @@ enum class OpCode : uint32_t {
   ELEMENTWISE_MUL,
   ELEMENTWISE_DIV,
   ACT,
+  REDUCE,
   SYNC
 };
 
 enum class ActKind : uint32_t { RELU, EXP, RSQRT, SILU };
+enum class ReduceKind : uint32_t { MAX, SUM, SQUARE_SUM, ARGMAX };
 
 struct Instruction {
   OpCode opcode;
@@ -87,6 +93,15 @@ struct ActParam {
   union {
     uint32_t extra[4];
   };
+};
+
+struct ReduceParam {
+  uint32_t dstAddr;
+  uint32_t idxAddr; // 索引，u32，[rows, 1]；只有 ARGMAX 用，其余 kind 必须为 0
+  uint32_t srcAddr;
+  uint32_t rows;
+  uint32_t cols;
+  ReduceKind kind;
 };
 
 } // namespace eclipse_runtime

@@ -76,8 +76,8 @@
   1. 按行 max → 广播减；
   2. EXP → 按行 sum → 倒数 → 广播乘。
 - **PV**：`[seq, seq] @ V[seq, 64] → [seq, 64]`。
-- **ISA op**：MATMUL、EWISE_MUL（scale）、**REDUCE（按行 max / 按行 sum，带 axis 说明）**、EWISE 广播减/乘、**ACT{EXP}**、**EWISE_DIV**、MATMUL（PV）。
-- **缺口**：REDUCE{kind=MAX/SUM, axis=rowwise}、ACT{EXP}、EWISE_DIV、EWISE broadcast、MATMUL 的 transpose layout（K^T）。
+- **ISA op**：MATMUL、EWISE_MUL（scale）、**REDUCE（按行 max / 按行 sum）**、EWISE 广播减/乘、**ACT{EXP}**、**EWISE_DIV**、MATMUL（PV）。
+- **缺口**：REDUCE{kind=MAX/SUM}（沿最后一维归约、输出 [rows,1]，无 axis 字段）、ACT{EXP}、EWISE_DIV、EWISE broadcast、MATMUL 的 transpose layout（K^T）。
 - **决策**：**"EclipseAttention"降级成一组组合 pattern**（QK^T → rowwise max → 广播减 → EXP → rowwise sum → 广播除 → PV），不引入独立 attention 指令。KV cache 用静态地址 DMA（decode 时每步追加）。
 
 ### 1.5 RMSNorm（pre/post）
@@ -85,12 +85,11 @@
 - 输入 x[seq, 896]，按最后一维归一化。
 - 公式：`x / sqrt(mean(x²)+eps) * gamma`。
 - **ISA op**：
-  - x²：EWISE_MUL（x*x）；
-  - 按行 sum：REDUCE{SUM, rowwise}；
-  - /896、+eps、sqrt、倒数：ACT{RSQRT}；
+  - mean(x²)：REDUCE{kind=SQUARE_SUM}（平方折进归约的输入端，不单独发一条 EWISE_MUL(x,x)——x[128,896] 已占 224KB，再来一块 x² 就顶到 512KB 上限）；
+  - /896、+eps、sqrt、倒数：ACT{RSQRT}（1/896 走标量广播的 EWISE_MUL）；
   - x × (1/√(mean+eps)) × gamma：EWISE_MUL + 广播（gamma[896]）。
-- **缺口**：REDUCE{SUM, rowwise}、ACT{RSQRT}、EWISE broadcast。
-- **决策**：ACT 加 RSQRT kind。
+- **缺口**：REDUCE{SQUARE_SUM}、ACT{RSQRT}、EWISE broadcast。
+- **决策**：ACT 加 RSQRT kind；REDUCE 加 SQUARE_SUM kind（省一个 224KB 的 SRAM 缓冲）。
 
 ### 1.6 SwiGLU（MLP）
 
@@ -116,8 +115,8 @@
 - `[seq, 896] @ [896, 151936]`，N=151936 巨大，必须 N 分块。
 - 推理只需 **argmax per row**，不需要完整 softmax。
 - **ISA op**：MATMUL（N 分块）+ REDUCE{ARGMAX}。
-- **缺口**：REDUCE_ARGMAX 的设计（分块流式合并：每块算局部 argmax 再合并，还是全 logits 落 DDR 整块 REDUCE）。
-- **决策**：先做流式合并；卡住则退化为"全 logits 落 DDR 再整块 REDUCE"（慢但对，计划 §3 第 4 条）。
+- **缺口**：REDUCE_ARGMAX 的设计（索引类型、tie/NaN 语义、分块怎么合并）。
+- **决策（已确认）**：**走"全 logits 落 DDR 再逐行整块 REDUCE"**，不做流式合并——实测只差 0.44%（账见 h3-plan §3 第 4 条），而流式合并要给描述符加 `accumulate` + `indexBase`。索引必须 u32（vocab 151936 > 65535，也 > fp16 能精确表示的 2048）。编码见 docs/spec/isa.md §7。
 
 ## 2. decode（seq=1）对 ISA 的额外影响
 
@@ -159,10 +158,10 @@
 | # | 变更 | 驱动算子 | 类型 |
 | --- | --- | --- | --- |
 | 1 | ELEMENTWISE_SUB / MUL / DIV | SwiGLU、RoPE、RMSNorm、softmax | 新 op |
-| 2 | REDUCE{kind, axis} | softmax、RMSNorm、lm_head | 新 op |
+| 2 | REDUCE{kind} | softmax、RMSNorm、lm_head | 新 op（已决策，§4.4） |
 | 3 | ACT kind 扩宽为 {RELU, EXP, RSQRT, SILU} | softmax、RMSNorm、SwiGLU | 合同修订（已决策，§4.1） |
 | 4 | EWISE broadcast 说明 | RoPE、RMSNorm、softmax | 合同修订 |
-| 5 | REDUCE 的 axis 说明 | softmax、RMSNorm | 合同修订 |
+| 5 | REDUCE 的归约方向与语义合同（无 axis 字段、tie/NaN、固定树 + fp32 累加） | softmax、RMSNorm、lm_head | 合同修订（已决策，§4.4） |
 | 6 | MATMUL 加 transA/transB | attention（K^T，KV cache） | 合同修订（已决策，§4.3） |
 | 7 | DDR 扩 2GB | 总权重 1.14GB | 一条宏 |
 | 8 | DMA_LOAD_ASYNC + WAIT tag | 双缓冲掩盖搬运 | **仅冻结编码**，不写编译器支持 |
@@ -199,15 +198,25 @@
 - **确认决策**：走 **(a)**，在 `MatmulParam` descriptor 加 `transA`/`transB` 标志位（Q@K^T 用 `transB=1`），**不新增 opcode**；cycle 不变（M/N/K 与 MAC 数一致）。这与业内标准一致（cuBLAS/CUTLASS 的 transA/transB、oneDNN、TPU MXU 的 `A@B^T`；transformer 主力配置就是 NT：A 正常、B 转置，因权重常按 `[out,in]` 存）。
 - 落地：cmodel / verifier / MatmulLowering 处理 `transB`。
 
+### 4.4 REDUCE 的编码 —— **已决策：无 axis 字段，ARGMAX 双输出**
+
+- **归约方向不需要 axis 字段**：硬件只看"一块 packed SRAM + 每行多少元素"，`cols` 就是轴——沿最后一维归约、输出 `[rows,1]`；整块归约写 `rows=1`（SRAM 里操作数必须 packed，`[1, rows*cols]` 是合法视图）。对四家 ISA 的核对一致：PTX `redux.sync`、RVV `vredsum`、SVE `FADDV`、昇腾 `WholeReduceSum` 的描述符里**都没有 axis 字段**——axis 是张量层的概念，ISA 层靠元素排布隐含表达。dialect 也不留这个属性（只能取一个值的属性就是冗余），"不支持 dim 0"的检查放在 linalg.reduce → eclipse.reduce 的 conversion 里报。
+- **kind 收敛为 `{MAX, SUM, SQUARE_SUM, ARGMAX}`**，逐个有驱动算子（§1.4/§1.5/§1.8）；MIN、MEAN 不加（mean = SUM + 标量广播乘）。
+- **ARGMAX 必须双输出**（值 + 索引）：值用于跨块比较，索引是最终产物。**索引必须 u32**——vocab 151936 超过 fp16 能精确表示的整数上限 2048，也超过 uint16 的 65535（昇腾的 fp16 索引就卡在 65535）。这是 ISA 里第一个非 fp16 数据，IR 层怎么表达留到实现时定。
+- **数值合同**：行内固定二叉归约 + **指令内 fp32 累加器**（≠ v0.3 的 fp32 ACC 区——后者是跨指令、放在内存里的累加区）。实测 896 元素：顺序 fp16 rel err **1.9e-2**（已爆 1e-2 容差）、二叉 fp16 1.1e-3、二叉 fp32 1.1e-7。tie 取第一个；NaN 视为最大（argmax 返回第一个 NaN 的索引）；溢出走 IEEE inf，不学昇腾的饱和钳位。
+- **列规约（沿 major 维）不设独立模式**（无驱动算子），两条绕法与周期账见 §5 与 docs/spec/isa.md 文末。
+- 语义与周期模型：docs/spec/isa.md §7；数值合同：docs/spec/accuracy.md。
+
 ## 5. 已知限制 / 待核实
 
 - **tie_word_embeddings**：未确认。影响 lm_head 是否复用 embedding 矩阵（影响 DDR 权重布局，不影响算子/ISA 映射）。需用户在模型 config 里确认。
 - **token/位置依赖地址静态烘焙**：嵌入行、KV cache 位置、RoPE cos/sin 偏移全部编译期烘焙进 DMA descriptor；间接寻址留 v0.3。
 - 16×16 阵列在 M=1（decode GEMV）浪费 15/16 lane → H3.5 决策。
+- **沿 major 维（列）归约无独立模式**：没有驱动算子。两条不改 ISA 的绕法——ones@src（伪装成 MATMUL 的 K 循环，烧 MAC 阵列）与逐行累加（烧 SIMD），周期账与精度差见 docs/spec/isa.md 文末"已知限制"。
 - int8 量化后置：fp16 全链路对拍通过之后再上。
 
 ## 6. 下一步（H3.1 剩余）
 
 1. ~~跑 §3.2 down_proj K 分块精度实验~~ —— 已完成（PASS：err=6.9e-4 → fp32 ACC 延到 v0.3）。
 2. ~~确认 §4.1 / §4.3 两个契约问题~~ —— 已确认（扩 ACT kind；MATMUL 加 transA/transB）。
-3. 冻结 ISA v0.2：ODS + spec + "v0.1→v0.2 每条变更的驱动算子"对照表（变更清单见 §4 表，已收敛）。
+3. 冻结 ISA v0.2：ODS + spec + "v0.1→v0.2 每条变更的驱动算子"对照表（变更清单见 §4 表，已收敛）。REDUCE 的编码与数值合同已定（§4.4；docs/spec/isa.md §7 与 docs/spec/accuracy.md 已同步）。

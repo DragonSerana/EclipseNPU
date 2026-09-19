@@ -161,3 +161,62 @@ ACT 从 `linalg.exp` / `linalg.rsqrt`（具名 op）和 relu 的 `linalg.generic
    `rhsBlk * 1 * 2` 字节，按 `n*2` 会多读 32KB，直接盖到后面的 dst buffer，
    报出假阳性（假阴性同理）。
 
+## v0.2：REDUCE 的数值合同
+
+归约是第一条**结果依赖执行顺序**的指令：前面的 MATMUL/ELEMENTWISE/ACT 都是逐元素或
+固定累加序，只有归约的加法不满足结合律、ARGMAX 还要吐索引。所以这里既有精度合同，
+也有语义合同（tie/NaN），两者都必须写死——业内四家的分歧全在这两点上。
+
+### 宽度：指令内 fp32 累加器
+
+cmodel 语义：**行内固定二叉归约，累加器 fp32，只在写回时舍入一次 fp16**。
+配对方式钉死：`(0,1),(2,3),...` 逐层合并；奇数长度时最后一项与单位元配对
+（SUM 配 +0，MAX/ARGMAX 配 -inf）。跨行互不干扰。
+
+实测（896 个元素 × 2000 组随机输入，与 fp64 真值的 max 相对误差）：
+
+| 累加方式 | 实测 rel err |
+| --- | --- |
+| 顺序 fp16 | **1.9e-2** |
+| 二叉 fp16 | 1.1e-3 |
+| 二叉 fp32 | **1.1e-7** |
+
+顺序 fp16 直接爆掉 1e-2 对拍容差——这不是理论最坏情况，是随机输入下的实测。
+（昇腾的 `ReduceSum` 就走这条路：文档明写"两两相加超过 65504 就存 65504"，靠饱和兜底。
+我们取 fp32 累加器 + 溢出按 IEEE 产生 inf，不学饱和——饱和是静默错，inf 是可见错。）
+
+**这个累加器是指令内部的**，不是 v0.3 的 fp32 ACC + MOVER：后者是跨指令、放在内存里的
+累加区（给 MATMUL 的 K 分块接力用），前者 ISA 不可见。两者别混。
+
+### 语义：tie / NaN / ±0 / 溢出
+
+- **tie**：多个相同最值时返回**第一个**（最小索引）。numpy / torch / 昇腾 / JAX /
+  Triton（`tie_break_left=True` 默认）一致。跨块合并后仍必须是"第一个"，否则合并顺序
+  会偷偷改变结果。
+- **NaN 获胜**：只要求最大值出现在 NaN 上（NaN 视为最大），ARGMAX 返回第一个 NaN 的
+  索引。实测 numpy 与 torch 一致：`argmax([1,nan,2])=1`、`argmax([2,nan,2])=1`、
+  `argmax([nan,1])=0`；JAX 的 `_argmax` 源码就是 `pick_op_val = gt(op,acc) | ne(op,op)`。
+  理由：LLM 里 NaN/inf 只可能来自出错，忽略 NaN 的 ISA（ARM 的 `FMAXNMV`、不带 `.NaN`
+  的 PTX `redux.sync`）会把错误藏起来，还让 max 和 argmax 的结果对不上。
+- **±0**：max(+0,-0) = +0（PTX 专门写了这条，ARM 也是 -0.0 < +0.0）。
+- **溢出**：SUM/SQUARE_SUM 的 fp32 累加和超出 fp16 上限时，写回按 IEEE 舍入到 inf，
+  不钳位饱和。
+- **参考真值**：与 ACT 一致，fp64 计算后正确舍入到 fp16；ulp 判据随 H3.2 的 cmodel
+  实现一起定（回归基线同 ACT 的"允许 1 ulp，不允许超过"）。
+
+### 业内参照（为什么合同要写这么细）
+
+- **PTX `redux.sync`**：整数 add/min/max 从 PTX 7.0 就有，**fp32 只给 min/max**
+  （PTX 8.6 / sm_100a），没有 fp32 add——min/max 满足结合律，硬件随便什么树序结果都
+  一样；浮点加法不满足，硬件自己定顺序等于结果不可复现。且带 `.abs` `.NaN` 两个
+  限定符，NaN 语义白纸黑字（带 `.NaN`：任一 NaN → canonical NaN；不带：只用非 NaN 值，
+  全 NaN 才返回 NaN）。
+- **RISC-V V**：`vfredosum`（ordered）与 `vfredusum`（unordered）两条并列，把"性能换
+  确定性"显式交给编译器选；`vredmax/vredmin` 有，argmax 没有。
+- **ARM SVE**：`FADDA`（strictly-ordered）与 `FADDV`；max 拆成 `FMAXV`（NaN 传播）与
+  `FMAXNMV`（忽略 NaN）两条，"NaN 怎么办"在真实 ISA 里是要占一条指令的。
+- **昇腾**：`ReduceMax/WholeReduceMax` 用 `calIndex` 决定要不要索引、`ReduceOrder`
+  决定 `[值,索引]` 还是 `[索引,值]`；索引**按 dst 的数据类型存**，于是被迫限制
+  "fp16 输入时索引最大 65535"；tie 取第一个。我们的 vocab 151936 正好踩死这条，
+  所以索引定 u32。
+

@@ -164,6 +164,17 @@ int main(int argc, char **argv) {
       desc.kind = static_cast<ActKind>(intVal(f.at("kind")));
       sim.writeDDR(descAddr, &desc, sizeof(desc));
       sim.push(Instruction{OpCode::ACT, descAddr});
+    } else if (insn.op == "REDUCE") {
+      ReduceParam desc{};
+      desc.dstAddr = hexVal(f.at("dst"));
+      desc.srcAddr = hexVal(f.at("src"));
+      desc.rows = intVal(f.at("rows"));
+      desc.cols = intVal(f.at("cols"));
+      desc.kind = static_cast<ReduceKind>(intVal(f.at("kind")));
+      if (desc.kind == ReduceKind::ARGMAX)
+        desc.idxAddr = hexVal(f.at("idx"));
+      sim.writeDDR(descAddr, &desc, sizeof(desc));
+      sim.push(Instruction{OpCode::REDUCE, descAddr});
     } else {
       std::fprintf(stderr, "eclipse-run: unknown opcode '%s'\n",
                    insn.op.c_str());

@@ -112,6 +112,15 @@ inline uint16_t loadU16(const void *p) {
 
 inline void storeU16(void *p, uint16_t v) { std::memcpy(p, &v, sizeof(v)); }
 
+// REDUCE_ARGMAX 的索引是 u32
+inline uint32_t loadU32(const void *p) {
+  uint32_t v;
+  std::memcpy(&v, p, sizeof(v));
+  return v;
+}
+
+inline void storeU32(void *p, uint32_t v) { std::memcpy(p, &v, sizeof(v)); }
+
 } // namespace eclipse_runtime
 
 #endif

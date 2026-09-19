@@ -8,6 +8,7 @@ not separated by a SYNC fence.
 import sys
 
 DTYPE_SIZE = 2
+IDX_SIZE = 4  # REDUCE_ARGMAX 的索引是 u32
 
 
 def die(message):
@@ -123,6 +124,20 @@ def parse_instruction(op, fields):
 
         reads.append(("src", [(src, src + n * DTYPE_SIZE)]))
         writes.append(("dst", [(dst, dst + n * DTYPE_SIZE)]))
+
+    elif op == "REDUCE":
+        dst = parse_hex(fields["dst"])
+        src = parse_hex(fields["src"])
+        rows = int(fields["rows"])
+        cols = int(fields["cols"])
+        kind = int(fields["kind"])
+
+        # src 是 [rows, cols]，dst 只有 [rows, 1]
+        reads.append(("src", [(src, src + rows * cols * DTYPE_SIZE)]))
+        writes.append(("dst", [(dst, dst + rows * DTYPE_SIZE)]))
+        if kind == 3:  # ARGMAX
+            idx = parse_hex(fields["idx"])
+            writes.append(("idx", [(idx, idx + rows * IDX_SIZE)]))
 
     elif op == "SYNC":
         pass

@@ -14,7 +14,8 @@
         MATMUL 加 transA/transB        驱动：attention 的 Q@K^T
         新增 ELEMENTWISE_SUB/MUL/DIV   驱动：SwiGLU、RoPE、RMSNorm、softmax
         ELEMENTWISE 加 rhs 读模式      驱动：RMSNorm gamma、RoPE cos/sin、softmax 减 max
-        新增 REDUCE{kind, axis}        驱动：softmax、RMSNorm、lm_head argmax
+        新增 REDUCE{kind}              驱动：softmax、RMSNorm、lm_head argmax
+                                       （无 axis 字段：归约方向由 cols 决定，见 §7）
         ACT kind 扩为 RELU/EXP/RSQRT/SILU
                                        驱动：softmax、RMSNorm、SwiGLU
         新增 DMA_LOAD_ASYNC / WAIT      驱动：双缓冲（仅冻结编码，v0.2 不实现）
@@ -120,12 +121,36 @@
     实现算法（LUT 大小/插值/迭代次数）不在合同里，见 docs/spec/accuracy.md。
 
 7. REDUCE
-    dst, src addr
-    n 长度，元素数
+    dst 输出值，fp16，[rows, 1]，packed
+    idx 输出索引，u32，[rows, 1]；只有 ARGMAX 用，其余 kind 必须为 0
+    src 输入，fp16，[rows, cols]，packed
+    rows 输出行数
+    cols 每行归约长度
     kind 归约种类（ReduceKind 枚举）：MAX, SUM, SQUARE_SUM, ARGMAX
-    axis 归约方向（ReduceAxis 枚举）：rowwise（沿最后一维，输出 [seq,1]），full（整块归约）
-        rowwise 是 softmax/RMSNorm 的刚需（softmax 稳定与分母、RMSNorm 的 mean(x^2)）。
-    ARGMAX 用于 lm_head 取每行最大位置；做流式分块合并时由编译器拼装。
+    语义：dst[r,0] = fold_{c<cols} src[r,c]，逐行独立，输出恒为 [rows,1]。
+    没有 axis 字段：归约方向由 cols 唯一决定（沿最后一维）。整块归约写 rows=1——
+        SRAM 里操作数必须 packed，[1, rows*cols] 是合法视图，不必另设模式。
+        沿 major 维（列）归约 v0.2 不支持，绕法见文末"已知限制"。
+    kind 与驱动算子：
+        MAX         softmax 的行内最大值（稳定化减数）
+        SUM         softmax 的行内分母
+        SQUARE_SUM  RMSNorm 的 mean(x^2)。折进归约的输入端，而不是先发一条
+                    ELEMENTWISE_MUL(x,x)：x[128,896] 已占 224KB，再要一块 x² 就顶到
+                    512KB 上限（还要放 gamma、sum 和下一步的输出）。
+        没有 MIN、没有 MEAN：都没有驱动算子。mean = SUM 后接一条 ELEMENTWISE_MUL，
+        标量 1/cols 走 rhsBlk=1 / rhsStride=0 的读模式（第 5 条）。
+    ARGMAX 吐两个结果：dst 是值、idx 是索引。值用于跨块比较（要合并得先能比大小），
+        索引是最终产物。u32 是硬约束——vocab 151936 既超过 fp16 能精确表示的整数
+        上限 2048，也超过 uint16 的 65535（昇腾的 fp16 索引就卡死在 65535）。
+        索引是"相对本次指令归约切片的偏移"（0 起），将来做跨块合并加 indexBase 是纯增量。
+        索引 4 字节而 DMA 的 rows/cols 按 2B/元素算，搬索引数组时按 cols=2*count 表达，
+        ABI 里写清楚；IR 层用什么类型表达留到实现时定。
+    输出 [rows,1] 正好接 ELEMENTWISE 的列广播（rhsBlk=1 / rhsStride=1）：softmax 的
+        "减 max"、RMSNorm 的"乘 1/rms"直接复用第 5 条的读模式，不引入新概念。
+    数值语义（合同见 docs/spec/accuracy.md）：行内固定二叉归约 + 指令内 fp32 累加器。
+        这个累加器不是 v0.3 的 fp32 ACC + MOVER——后者是跨指令、放在内存里的累加区
+        （给 MATMUL 的 K 分块接力用），前者 ISA 不可见。
+    tie：多个相同最值时返回第一个；NaN 视为最大（ARGMAX 返回第一个 NaN 的索引）。
 
 8. SYNC
     无参数，descPtr = 0，表示fence all，等待所有指令执行完成
@@ -160,8 +185,10 @@
         uint32_t dstAddr;
         uint32_t rhsAddr;
         uint32_t lhsAddr;
-        uint32_t n; // 元素数
-        // broadcast：lhs/rhs 允许为 [seq,1] 或 [1,N]
+        uint32_t rows;      // 输出行数
+        uint32_t cols;      // 输出行宽
+        uint32_t rhsBlk;    // rhs 的行内重复周期
+        uint32_t rhsStride; // rhs 每行前进多少元素（0 = 行广播）
     }
 
     struct ActParam {
@@ -175,14 +202,12 @@
     }
 
     struct ReduceParam {
-        uint32_t dstAddr;
-        uint32_t srcAddr;
-        uint32_t n; // 元素数
-        ReduceKind kind;
-        ReduceAxis axis;
-        union {
-            uint32_t extra[4];
-        }
+        uint32_t dstAddr; // 值 [rows,1] fp16
+        uint32_t idxAddr; // 索引 [rows,1] u32，只有 ARGMAX 用
+        uint32_t srcAddr; // [rows,cols] fp16
+        uint32_t rows;
+        uint32_t cols;
+        ReduceKind kind; // MAX/SUM/SQUARE_SUM/ARGMAX
     }
 
     // 从15x32的tensor切出来15x31
@@ -271,10 +296,16 @@
 
 ## cycle模型
     当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
-    新指令估算：ELEMENTWISE_* / REDUCE 走 SIMD 引擎，= ceil(n / ELEM_PER_CYCLE)；
+    ELEMENTWISE_* 与 REDUCE 的元素级部分走 SIMD（ALU）引擎，= ceil(rows*cols / ELEM_PER_CYCLE)；
+    REDUCE 多一段跨 lane 的归约树：+ rows * LOG2(ELEM_PER_CYCLE)；
+    ARGMAX 的元素级部分 ×2（比较 + 选择，系数是假设值，待校准）；
     ACT 的 RELU 也走 SIMD（= ceil(n / ELEM_PER_CYCLE)）；EXP/RSQRT/SILU 走 SFU，
     = ceil(n / SFU_ELEM_PER_CYCLE) + ACT_FIXED_OVERHEAD，速率是假设值（等 attention cycle 报告校准）；
-    MATMUL 转置与不转置开销一致；REDUCE 的 ARGMAX 额外计入少量合并开销（后续定）。
+    MATMUL 转置与不转置开销一致。
+    两个未定的假设值：REDUCE 的元素级部分是 fp32 累加器，是否仍按 ELEM_PER_CYCLE 收钱
+    （fp32 通路可能只有一半 lane）；树深 LOG2(ELEM_PER_CYCLE) = 7。
+    "烧哪个引擎"是可选的：列规约既能伪装成 MATMUL 的 K 循环（烧 MAC 阵列），也能用逐行
+    累加（烧 SIMD）——比较两条路的周期数之前，先确认它们烧的不是同一个引擎。
 
 ## v0.2 不做 / 推迟到 v0.3
 
@@ -285,3 +316,21 @@
 - 硬件 padding 到 MAC 倍数：依赖 roofline 实验数据决策。
 - uint8/int8 量化：fp16 全链路对拍通过之后再上。
 - MATMUL 的 inplace/多指令融合：后续版本。
+- 沿 major 维（列）归约：没有驱动算子，不设独立模式（归约方向由 cols 唯一决定）。
+  两条不改 ISA 的绕法：
+    1) ones@src：`out[1,C] = ones[1,R] @ src[R,C]`，即 MATMUL(M=1, K=R, N=C)。
+       被归约的维天然是 K，不需要 transpose；cmodel 的 MATMUL 内部本来就是 fp32
+       累加，精度好。代价是烧 MAC 阵列：当前模型 ceil(M*N/256)*K，[128,896] 上
+       512 cycle；M=1 在 16×16 阵列上浪费 15/16，H3.5 若改成 ceil(M/16)×ceil(N/16)
+       就变 7168 cycle。
+    2) 逐行累加：`acc[1,C] += src[r,:]`，r=1..R-1，共 R-1 条 ELEMENTWISE_ADD
+       （dst 与 lhs 同一块；cmodel 的 EWISE 是逐元素读-写，原地安全）。走 SIMD 引擎，
+       [128,896] 上 127*ceil(896/128) = 889 cycle，与阵列模型无关。代价是 fp16 累加
+       R-1 次舍入（精度比 ones@src 差四个数量级）、约 683KB 的 SRAM 往返、R-1 条指令的
+       发射开销，且 lowering 要支持带 offset 的 subview。
+  两条路在当前模型下差不多，H3.5 的阵列模型一细化就反转——所以"哪个更快"取决于烧哪个
+  引擎，不是孤立执行的 cycle 数（v0.3 的 no-load/no-store 调度器就是让 MAC 阵列和 SIMD
+  并行，那时这个选择还会再变）。
+  真加 axis 字段的代价：第二条数据通路（累加扫描，不是树）+ 新 cycle 公式 +
+  ARGMAX×MAJOR 的组合语义 + verifier + 测试；换来的吞吐跟绕法 2 打平（896 vs 889），
+  真正买到的是指令数 1 vs R-1 和 SRAM 流量 115KB vs 683KB。等有驱动算子再加。

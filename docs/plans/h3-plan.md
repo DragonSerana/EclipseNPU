@@ -14,13 +14,13 @@
 | RoPE | cos/sin 表宿主预计算放 DDR；rotate_half 拆成前后两半连续块，4×EWISE_MUL + 2×EWISE_SUB/ADD | 不需要 GATHER，推 v0.3 |
 | down_proj（K=4864） | 超过 MATMUL 的 K≤1024 上限，必须 K 分块，跨块 fp16 累加精度问题第一次真的出现 | 先做实验：K-tile=1024 分 5 块对拍 torch，过了就把 fp32 ACC+MOVER 延到 v0.3 |
 | QKV/O/gate/up（N=1152~4864） | 权重矩阵 2~8.5MB 远超 512KB SRAM，必须 N 分块（N-tile=64 时 352KB，放得下） | ISA 不用改，但编译器要从只切 K 升级成 M/N/K 三维都能切，这是 H3 编译器最大的活 |
-| lm_head（N=151936） | N 分块 + 每块算局部 argmax 再合并 | 决定 REDUCE_ARGMAX 的设计 |
+| lm_head（N=151936） | N 分块；v0.2 不做流式合并，logits 落 DDR 再逐行整块 REDUCE（实测只差 0.44%，见 §3） | 决定 REDUCE_ARGMAX 的设计；不为此加描述符字段 |
 | Attention（seq≤128） | scores 128×128×2=32KB 整个放得进 SRAM，两遍 softmax 就行，不需要 flash 式分块；scale=0.125 在 fp16 里精确，直接折叠进 Q 权重 | "EclipseAttention" 从独立工程降级成一组组合 pattern |
-| Softmax | 需要 rowwise 求最大/求和，还有广播减法乘法 | REDUCE 要加 axis 说明（按行/全量），EWISE 要加 broadcast 说明 |
+| Softmax | 需要 rowwise 求最大/求和，还有广播减法乘法 | REDUCE 沿 cols 归约、输出 [rows,1]（无 axis 字段：rows=1 即全量），EWISE 要加 broadcast 说明 |
 | RMSNorm | 求平方和、平均、rsqrt、乘 | ACT 加 RSQRT kind |
 | SwiGLU silu | 拆开要 5 条指令，给 ACT 加 SILU kind 就 1 条 | ACT kind 扩宽 {EXP, RSQRT, SILU} |
 
-所以 ISA v0.2 的最小增量：**新增 op 是 ELEMENTWISE_SUB/MUL/DIV 与 REDUCE{kind,axis}**，外加合同修订（ACT kind 扩宽、EWISE 的 broadcast、REDUCE 的 axis、MATMUL 的 transA/transB）、DDR 扩到 2GB、DMA_LOAD_ASYNC/WAIT 只冻结编码不写编译器支持。每条变更都要写清楚是哪个模型算子逼出来的。
+所以 ISA v0.2 的最小增量：**新增 op 是 ELEMENTWISE_SUB/MUL/DIV 与 REDUCE{kind}**，外加合同修订（ACT kind 扩宽、EWISE 的 broadcast、MATMUL 的 transA/transB）、DDR 扩到 2GB、DMA_LOAD_ASYNC/WAIT 只冻结编码不写编译器支持。每条变更都要写清楚是哪个模型算子逼出来的。
 
 ## 2. 阶段拆分
 
@@ -31,7 +31,10 @@
    - down_proj 按 K=1024 切 5 块的精度——**已完成**：err=6.9e-4 < 1e-2，PASS → fp32 ACC + MOVER 推 v0.3；
    - GATHER 和逐行 DMA 的 cycle 对比——**已完成**：逐行 DMA ≈9216 cycle、占比小 → GATHER 推 v0.3；
    - EXP/RSQRT 的 LUT 项数 vs 误差——**已完成**：数据见 docs/spec/accuracy.md（N≥32 时 LUT 误差已低于 fp16 舍入）；
-3. 冻结 ISA v0.2：新 op 的 ODS + spec 更新（v0.1 的六条指令语义不变；新增 opcode 按族分组插入，编号会动，但 `.easm` 是文本、按名字解析，不受影响）+ "v0.1→v0.2 每条变更由哪个算子驱动"对照表 + 已知限制（token 地址静态烘焙、16×16 阵列在 M=1 时浪费 15/16、int8 后置）。
+   - REDUCE 的编码与数值合同——**已完成**（2026-09 讨论定稿）：无 axis 字段、四个 kind、
+     ARGMAX 双输出 + u32 索引、固定二叉归约 + 指令内 fp32 累加器。见 docs/spec/isa.md §7
+     与 docs/spec/accuracy.md；
+3. 冻结 ISA v0.2：新 op 的 ODS + spec 更新（v0.1 的六条指令语义不变；新增 opcode 按族分组插入，编号会动，但 `.easm` 是文本、按名字解析，不受影响）+ "v0.1→v0.2 每条变更由哪个算子驱动"对照表 + 已知限制（token 地址静态烘焙、16×16 阵列在 M=1 时浪费 15/16、列规约无独立模式、int8 后置）。
 
 做完的标志：每个模型算子都有映射或者写明为什么延后；v0.2 合同冻结，不再回头改。
 
@@ -48,7 +51,7 @@
 ### H3.3 三个算子（2.5–3.5 周，H3 最重的部分）
 
 1. MatmulLowering 三维 tiling（约 300–500 行）：M×K×N 循环嵌套，K 块之间用 accumulate 接力，N 块的 dst tile 互相独立，lhs 跨 N-tile 驻留（lhs 只 load 一次，这是第一个真正的优化）。验收：down_proj 全形状跑通并对拍 torch；
-2. argmax（约 1 周）：REDUCE_ARGMAX 的 cmodel + lm_head 分块流式合并的 pattern；手写 golden 版 + 编译器版，两版都对拍；
+2. argmax（约 1 周）：REDUCE_ARGMAX 的 cmodel + lm_head 的 N 分块 + logits 落 DDR 逐行整块 REDUCE 的 pattern（不流式合并，见 §3 第 4 条）；手写 golden 版 + 编译器版，两版都对拍；
 3. attention（约 1.5 周）：组合 pattern（QK^T → 按行求 max → 广播减 → EXP → 按行求和 → 倒数 → 广播乘 → PV）+ KV cache 静态地址 DMA；手写 golden 版；对拍容差开工时写进文档；
 4. 每个算子：两版都过 hazard 检查器 + cycle 报告 + 编译器版 ≥ 手写版的 90%（同样调度下应该接近 100%，留 10% 是给调度差异的余量）。
 
@@ -63,7 +66,15 @@ cycle-report-h3（分算子的 MAC/DMA 利用率）、ops-audit 定稿、CI 绿�
 1. GATHER 推到 v0.3，先用逐行 DMA（有数据背书）；
 2. fp32 ACC + MOVER 推到 v0.3（K 分块精度实验过了就触发）；
 3. attention 两遍 softmax 精度实在不行，才考虑 flash 式分块（预计用不上）；
-4. argmax 流式合并卡住，就把全部 logits 落 DDR 再整块 REDUCE（慢但对）；
+4. argmax：**v0.2 直接走"logits 落 DDR 再逐行整块 REDUCE"**（2026-09 定，不再是"卡住才退化"）。
+   实测 prefill（M=128 / K=896 / N=151936，N-tile=64，2374 块）：兜底 2.62M cycle
+   vs 流式 2.28M，差 0.34M，占 lm_head 本身 76.6M 的 **0.44%**。流式合并还要给 REDUCE
+   加 `accumulate` + `indexBase` 两个字段（合并是 compare+select，ISA 里没有 CMP/SELECT，
+   硬件不做就只能靠间接寻址 gather 块内索引，而间接寻址已推 v0.3），不值。
+   两个前提：DMA 32B/cycle 对 MAC 256/cycle 富余；一整行 logits 放得进 SRAM
+   （151936×2B = 304KB < 512KB）。前提变了要重算这笔账。
+   流式合并随 v0.3 的 no-load/no-store 调度器一起做——它本质是"数据不落 DDR"的副产品，
+   不是独立优化。decode（seq=1）两者都不需要：一行 logits 直接进 SRAM 整块归约；
 5. 三维 tiling 卡住，先保 K+N 两维（M 固定 128），M 分块挪到 H3.5。
 
 ## 4. 时间预估
@@ -79,7 +90,10 @@ ELEMENTWISE_SUB / MUL / DIV	 已完成
 ACT kind 扩宽 {EXP, RSQRT, SILU}	EXP/RSQRT 已完成（e2e 逐位一致，0 ulp）；SILU 等 H3.3 SwiGLU
 MATMUL 加 transA/transB
 ELEMENTWISE 加 rhs 读模式	已完成（EwiseParam 加 cols/rhsBlk/rhsStride，参数纯从 shape 推）
-REDUCE{kind, axis}
+REDUCE{kind}	设计已冻结（2026-09 定）：无 axis 字段（归约方向由 cols 决定，rows=1 即全量）；
+	kind={MAX,SUM,SQUARE_SUM,ARGMAX}；ARGMAX 双输出（值 fp16 + 索引 u32，索引必须是 u32
+	因为 151936 > 65535）；行内固定二叉归约 + 指令内 fp32 累加器；列规约不支持
+	（无驱动算子，两条绕法见 docs/spec/isa.md 文末）。实现待 H3.2
 DDR 扩 2GB	已完成（DDR_SIZE=0x80000000，基址 0x80000000→0x40000000 避开 uint32 回绕）
 
 ## 7. 超越函数策略（EXP/RSQRT/SILU）：合同定精度，实现分三步
