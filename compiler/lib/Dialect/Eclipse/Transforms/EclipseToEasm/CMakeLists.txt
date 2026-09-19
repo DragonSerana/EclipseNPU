@@ -13,6 +13,7 @@ add_mlir_library(EclipseEmitPasses
   MatmulEmit.cpp
   EwiseEmit.cpp
   ActEmit.cpp
+  ReduceEmit.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../include/eclipse

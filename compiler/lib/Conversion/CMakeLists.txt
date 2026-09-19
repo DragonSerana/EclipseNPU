@@ -13,6 +13,7 @@ add_mlir_library(EclipseConversionPasses
   ConvertLinalgToEclipse/MatmulLowering.cpp
   ConvertLinalgToEclipse/EwiseLowering.cpp
   ConvertLinalgToEclipse/ActLowering.cpp
+  ConvertLinalgToEclipse/ReduceLowering.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include/eclipse

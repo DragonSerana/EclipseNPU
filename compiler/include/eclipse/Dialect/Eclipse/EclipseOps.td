@@ -136,6 +136,47 @@ def Eclipse_ActOp : Eclipse_Op<"act"> {
   let assemblyFormat = "$src `,` $dst `{` `kind` `=` $kind `}` attr-dict `:` type($src) `,` type($dst)";
 }
 
+def Eclipse_ReduceKind_MAX : I32EnumAttrCase<"MAX", 0, "max">;
+def Eclipse_ReduceKind_SUM : I32EnumAttrCase<"SUM", 1, "sum">;
+def Eclipse_ReduceKind_SQUARE_SUM : I32EnumAttrCase<"SQUARE_SUM", 2, "square_sum">;
+def Eclipse_ReduceKind_ARGMAX : I32EnumAttrCase<"ARGMAX", 3, "argmax">;
+def Eclipse_ReduceKindAttr : I32EnumAttr<"ReduceKind", "Eclipse reduce kind",
+    [Eclipse_ReduceKind_MAX, Eclipse_ReduceKind_SUM, Eclipse_ReduceKind_SQUARE_SUM,
+     Eclipse_ReduceKind_ARGMAX]> {
+  let cppNamespace = "::mlir::eclipse";
+}
+
+// REDUCE_ARGMAX 吐出来的索引是 u32，所以要一个 i32 的 SRAM 类型
+def Eclipse_SRAMIndexMemRef : ConfinedType<
+    MemRefRankOf<[I32], [2]>,
+    [CPred<"llvm::cast<::mlir::MemRefType>($_self).getMemorySpaceAsInt() == 0">],
+    "2D i32 memref in SRAM", "::mlir::MemRefType">;
+
+def Eclipse_ReduceOp : Eclipse_Op<"reduce"> {
+  let summary = "Eclipse NPU row-wise reduction";
+  let description = [{
+    `eclipse.reduce` corresponds to the REDUCE instruction in the ISA.
+    It folds every row of `src` ([rows, cols]) into one value,
+    `dst[r, 0] = fold(src[r, 0..cols))`, so `dst` is [rows, 1].
+    `kind` selects the fold: max / sum / square_sum / argmax.
+    `kind = argmax` additionally writes the index of the first maximum into
+    `idx` ([rows, 1], i32); the other kinds must not carry `idx`.
+  }];
+
+  let arguments = (ins
+    Eclipse_SRAMMemRef:$src,
+    Eclipse_SRAMMemRef:$dst,
+    Optional<Eclipse_SRAMIndexMemRef>:$idx,
+    Eclipse_ReduceKindAttr:$kind
+  );
+
+  let results = (outs);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = "$src `,` $dst (`,` $idx^)? `{` `kind` `=` $kind `}` attr-dict `:` type($src) `,` type($dst) (`,` type($idx)^)?";
+}
+
 def Eclipse_SyncOp : Eclipse_Op<"sync"> {
   let summary = "Eclipse NPU fence";
   let description = [{

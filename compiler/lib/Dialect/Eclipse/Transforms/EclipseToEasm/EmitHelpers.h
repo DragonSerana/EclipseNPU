@@ -22,6 +22,8 @@ uint32_t emitMatmulOp(Operation *op, llvm::raw_ostream &fileOS,
 uint32_t emitEwiseOp(Operation *op, llvm::raw_ostream &fileOS,
                      uint32_t descAddr);
 uint32_t emitActOp(Operation *op, llvm::raw_ostream &fileOS, uint32_t descAddr);
+uint32_t emitReduceOp(Operation *op, llvm::raw_ostream &fileOS,
+                      uint32_t descAddr);
 
 } // namespace eclipse
 } // namespace mlir

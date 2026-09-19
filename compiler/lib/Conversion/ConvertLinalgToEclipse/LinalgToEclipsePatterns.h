@@ -11,6 +11,7 @@ void populateLinalgToEclipsePatterns(RewritePatternSet &patterns);
 void populateMatmulLowering(RewritePatternSet &patterns);
 void populateEwiseLowering(RewritePatternSet &patterns);
 void populateActLowering(RewritePatternSet &patterns);
+void populateReduceLowering(RewritePatternSet &patterns);
 
 } // namespace eclipse
 } // namespace mlir

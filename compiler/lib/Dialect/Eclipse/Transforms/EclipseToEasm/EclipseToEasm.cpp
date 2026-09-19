@@ -63,6 +63,8 @@ public:
         descAddr = emitEwiseOp(op, fileOS, descAddr);
       else if (isa<ActOp>(op))
         descAddr = emitActOp(op, fileOS, descAddr);
+      else if (isa<ReduceOp>(op))
+        descAddr = emitReduceOp(op, fileOS, descAddr);
     });
   }
 };
