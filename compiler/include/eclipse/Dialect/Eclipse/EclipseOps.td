@@ -91,7 +91,9 @@ def Eclipse_MatmulOp : Eclipse_Op<"matmul"> {
     Eclipse_SRAMMemRef:$lhs,
     Eclipse_SRAMMemRef:$rhs,
     Eclipse_SRAMMemRef:$dst,
-    BoolAttr:$accumulate
+    BoolAttr:$accumulate,
+    DefaultValuedAttr<BoolAttr, "false">:$transA,
+    DefaultValuedAttr<BoolAttr, "false">:$transB
   );
 
   let results = (outs);

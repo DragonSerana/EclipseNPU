@@ -142,6 +142,8 @@ int main(int argc, char **argv) {
       desc.N = intVal(f.at("N"));
       desc.K = intVal(f.at("K"));
       desc.accumulate = intVal(f.at("acc"));
+      desc.transA = intVal(f.at("ta")) != 0;
+      desc.transB = intVal(f.at("tb")) != 0;
       sim.writeDDR(descAddr, &desc, sizeof(desc));
       sim.push(Instruction{OpCode::MATMUL, descAddr});
     } else if (insn.op == "ELEMENTWISE_ADD" || insn.op == "ELEMENTWISE_SUB" ||

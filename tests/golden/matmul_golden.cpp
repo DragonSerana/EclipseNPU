@@ -26,7 +26,7 @@ static constexpr uint32_t C_DDR = DDR_ADDR + 0x30000;
 static void pushDmaLoad(Simulator &sim, uint32_t sramAddr, uint32_t ddrAddr,
                         uint32_t cow, uint32_t col, uint32_t srcStride,
                         uint32_t dstStride) {
-  DMAParam desc;
+  DMAParam desc{};
   desc.sramAddr = sramAddr;
   desc.ddrAddr = ddrAddr;
   desc.rows = cow;
@@ -40,7 +40,7 @@ static void pushDmaLoad(Simulator &sim, uint32_t sramAddr, uint32_t ddrAddr,
 
 // 不切分的版本
 static void pushMatmulBlock(Simulator &sim, uint32_t accumulate) {
-  MatmulParam desc;
+  MatmulParam desc{};
   desc.dstAddr = C_SRAM;
   desc.lhsAddr = A_SRAM;
   desc.rhsAddr = B_SRAM;
@@ -55,7 +55,7 @@ static void pushMatmulBlock(Simulator &sim, uint32_t accumulate) {
 
 static void pushMatmulBlockTile(Simulator &sim, uint32_t accumulate,
                                 uint32_t K) {
-  MatmulParam desc;
+  MatmulParam desc{};
   desc.dstAddr = C_SRAM;
   desc.lhsAddr = A_SRAM;
   desc.rhsAddr = B_SRAM;
@@ -69,7 +69,7 @@ static void pushMatmulBlockTile(Simulator &sim, uint32_t accumulate,
 }
 
 static void pushDmaStore(Simulator &sim, uint32_t sramAddr, uint32_t ddrAddr) {
-  DMAParam desc;
+  DMAParam desc{};
   desc.sramAddr = sramAddr;
   desc.ddrAddr = ddrAddr;
   desc.rows = 128;

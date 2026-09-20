@@ -73,9 +73,14 @@ void execMatmul(CModel &sim, uint32_t descPtr) {
   for (uint32_t m = 0; m < desc->M; m++) {
     for (uint32_t n = 0; n < desc->N; n++) {
       float acc = 0.0f;
-      for (uint32_t k = 0; k < desc->K; k++)
-        acc += sim.readFP16(desc->lhsAddr + ((m * desc->K) + k) * DTYPE_SIZE) *
-               sim.readFP16(desc->rhsAddr + ((k * desc->N) + n) * DTYPE_SIZE);
+      for (uint32_t k = 0; k < desc->K; k++) {
+        const uint32_t lhsOff =
+            desc->transA ? (k * desc->M + m) : (m * desc->K + k);
+        const uint32_t rhsOff =
+            desc->transB ? (n * desc->K + k) : (k * desc->N + n);
+        acc += sim.readFP16(desc->lhsAddr + lhsOff * DTYPE_SIZE) *
+               sim.readFP16(desc->rhsAddr + rhsOff * DTYPE_SIZE);
+      }
       if (desc->accumulate)
         acc += sim.readFP16(desc->dstAddr + ((m * desc->N) + n) * DTYPE_SIZE);
 

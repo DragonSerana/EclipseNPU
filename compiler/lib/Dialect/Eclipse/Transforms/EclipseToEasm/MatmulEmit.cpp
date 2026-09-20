@@ -18,14 +18,21 @@ uint32_t emitMatmulOp(Operation *op, llvm::raw_ostream &fileOS,
   uint32_t lhs = matmulOp.getLhs().getDefiningOp<SramOp>().getAddr();
   uint32_t rhs = matmulOp.getRhs().getDefiningOp<SramOp>().getAddr();
 
-  // TODO Matmul参数暂时写死
-  uint32_t M = matmulOp.getLhs().getType().getShape()[0];
-  uint32_t K = matmulOp.getLhs().getType().getShape()[1];
-  uint32_t N = matmulOp.getRhs().getType().getShape()[1];
+  // 转置时对应矩阵在描述符里按 [K,M] / [N,K] 摆布，逻辑上仍算 MxN
+  auto lhsShape = matmulOp.getLhs().getType().getShape();
+  auto rhsShape = matmulOp.getRhs().getType().getShape();
+  const bool transA = matmulOp.getTransA();
+  const bool transB = matmulOp.getTransB();
+
+  uint32_t M = transA ? lhsShape[1] : lhsShape[0];
+  uint32_t K = transA ? lhsShape[0] : lhsShape[1];
+  uint32_t N = transB ? rhsShape[0] : rhsShape[1];
   uint32_t acc = matmulOp.getAccumulate();
-  fileOS << llvm::formatv("{0,-14} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} "
-                          "M={5:d} N={6:d} K={7:d} acc={8:d}\n",
-                          "MATMUL", descAddr, dst, lhs, rhs, M, N, K, acc);
+  fileOS << llvm::formatv(
+      "{0,-14} desc={1:x} dst={2:x} lhs={3:x} rhs={4:x} "
+      "M={5:d} N={6:d} K={7:d} acc={8:d} ta={9:d} tb={10:d}\n",
+      "MATMUL", descAddr, dst, lhs, rhs, M, N, K, acc,
+      static_cast<uint32_t>(transA), static_cast<uint32_t>(transB));
 
   return descAddr + DESC_LEN;
 }
