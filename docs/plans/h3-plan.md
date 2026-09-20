@@ -42,11 +42,27 @@
 
 1. 新 op 的 cmodel 实现 + computeCycles + verifier + EclipseConstants 同步；DDR 扩 2GB；
    - 超越函数（EXP/RSQRT/SILU）的 cmodel 先调 libm 占位，精度合同见第 7 节；computeCycles 用吞吐参数建模，与内部算法无关；
-2. 顺手做掉一直搁置的 MATMUL_FIXED_OVERHEAD：H3 要对比"编译器生成版和手写版的 cycle"，这个 overhead 不加，小 tile 的对比不公平。加的时候在注释里写明这是模型假设；
+2. 做掉一直搁置的 MATMUL 固定开销，但形式是 **per 输出 tile**，不是 per-instruction 常数：H3 要对比"编译器生成版和手写版的 cycle"，而现在的 `ceil(M*N/MAC_PER_CYCLE)*K` 里没有任何一项随输出 tile 数增长，小 K 块看起来就是免费的（H2 的 K=16 分块把 128×128×128 切成 8 条 MATMUL，每条 64 个 tile，per-instruction 常数只加 `8D` 拍，per-tile 项要加 `512D` 拍）。改成 `ceil(M/16)×ceil(N/16)×(K+D)`，D 先填假设值并在注释里写明是模型假设（R4 的 RTL 负责确认 FSM 有没有额外 stall，见 rtl-plan §4）；
 3. hazard_check.py 认识新 opcode（现在只认六条指令，新 op 一进来就查不了）；
 4. 每个新 op：lit 正反例 + 单 op 手写指令流 + 和 torch 对拍。
 
 做完的标志：所有新 op 单测全绿。
+
+### H3.R（2026-09 插入，2026-09 重排）：RTL 核心单元并行推进（R1–R4，R5/R6 按需）
+
+定位改动：从"H3.3 之前必须做完的校准步骤"改成"与 H3.3 并行、固定每周 ≤15%、不设 gate 的学习支线"。理由：H3.3 的 90% 是同一模型下的相对赛跑，fill/drain 在比值里抵消，不依赖校准值；把 RTL 当前置门只会互相拖累。cmodel 是合同/golden、RTL 是实现的关系不变，完整计划见 docs/plans/rtl-plan.md。
+
+顺序按"惩罚发生在哪"排，不按算术难度排：
+
+1. R1：valid/ready 流水与反压（skid buffer + 一个真实 stall 源）；
+2. R2：bank 化 SRAM 与仲裁（先写端口预算：16×16 阵列每拍 32 个元素读，DMA 通道只有 16 元素/拍）；"bank 数怎么决定 N_tile"要能用端口预算重新推一遍 ops-audit §4.2；
+3. R3：DMA 引擎 + descriptor 取指。取指拍数是 cmodel 里没有的一项（host 直接 push），这是模型有意串行 vs RTL 真并发的第一笔差异；
+4. R4：16×16 MAC 阵列 + 顶层跑通 H1 指令流，范围含 transA/transB、accumulate、M/N/K 非 16 倍数时的尾块；回填 per-tile 形式的 `(K+D)`，并把 wave quantization 改成 `ceil(M/16)×ceil(N/16)`（对 H1 基线是 no-op，11536 不变）；
+5. R5：LUT/EWISE/REDUCE 按需；R6：bit-exact 加法器可选，随时可停。
+
+done：每层的标准是"cycle 能手算 + 波形与手算一致 + 歧义清单有新增"，不用"与 cmodel 逐 bit 一致"当通用标准（bit-exact 只由 R6 单独承担）。R4 的数值验收口径是"相对 fp64 参考 ≤1 ulp，且误差不差于 cmodel"。校准值落在 H3.4 的 cycle 报告里；R5 之前 `ACT_FIXED_OVERHEAD`、`REDUCE_TREE_STEPS`、`SFU_ELEM_PER_CYCLE` 仍是假设值，报告里要标注。
+
+前置（不是 RTL 的工作，但没有它 RTL 没有可比对象）：先把 cycle 模型的形状改对（H3.2 第 2 项 + wave quantization），再出一张假设值敏感度表（D ∈ {0,2,4,8}、SFU 1/4 vs 1/1、`ELEM_PER_CYCLE` 128 vs 64 各自会不会翻转 H3.3 的 90% 判定）。纸面改动，半天到一天。
 
 ### H3.3 三个算子（2.5–3.5 周，H3 最重的部分）
 
@@ -79,7 +95,7 @@ cycle-report-h3（分算子的 MAC/DMA 利用率）、ops-audit 定稿、CI 绿�
 
 ## 4. 时间预估
 
-6–9 周业余时间。比 roadmap 估的 4–8 周略长，多出来的主要在三维 tiling——从"只切一个循环"到"真正的 GEMM 调度"是个台阶，但这也是 H3 里最值钱的部分。
+6–9 周业余时间，RTL 支线按固定 ≤15% 并行推进、不计入主线工时（原"插入 2–4 周"作废，RTL 不再是前置步骤）。比 roadmap 估的 4–8 周略长，多出来的主要在三维 tiling——从"只切一个循环"到"真正的 GEMM 调度"是个台阶，但这也是 H3 里最值钱的部分。
 
 ## 5. 记到 H3.5 门口的事
 
@@ -103,7 +119,7 @@ DDR 扩 2GB	已完成（DDR_SIZE=0x80000000，基址 0x80000000→0x40000000 避
 ### 原则
 
 - ISA 合同写"结果与真值误差 ≤ 某界"，不写"用 LUT 实现"——实现算法是电路层决策，属于 accuracy.md 和 spec 附录，不属于 opcode 语义。
-- **cycle 与算法无关**：EXP 这类固定功能单元时序是数据无关的，computeCycles 只需要吞吐合同（每 kind 一个 per-element 速率 + 一个固定开销，注释注明是假设值）。LUT 内容影响的是数值误差，不影响 cycle 公式。速率**按 kind 分档**：RELU 是 `max(0,x)`、真芯片满速，取 `ELEM_PER_CYCLE`；EXP/RSQRT 参照 NV SFU 的 **1/4 rate**（ex2.approx/rcp.approx 的误差预算白纸黑字写在 PTX 文档里），先验取 `ELEM_PER_CYCLE/4`。等 attention 的 cycle 报告出来后用数据修正。**注意**：新增 `ACT_FIXED_OVERHEAD` 会让现有 relu 基线（matmul_add_relu_128 = 12832）变化，和 `MATMUL_FIXED_OVERHEAD` 一样要重算 baseline。
+- **cycle 与算法无关**：EXP 这类固定功能单元时序是数据无关的，computeCycles 只需要吞吐合同（每 kind 一个 per-element 速率 + 一个固定开销，注释注明是假设值）。LUT 内容影响的是数值误差，不影响 cycle 公式。速率**按 kind 分档**：RELU 是 `max(0,x)`、真芯片满速，取 `ELEM_PER_CYCLE`；EXP/RSQRT 参照 NV SFU 的 **1/4 rate**（ex2.approx/rcp.approx 的误差预算白纸黑字写在 PTX 文档里），先验取 `ELEM_PER_CYCLE/4`。等 attention 的 cycle 报告出来后用数据修正。**注意**：新增 `ACT_FIXED_OVERHEAD` 会让现有 relu 基线（matmul_add_relu_128 = 12832）变化，和 MATMUL 加 per-tile `(K+D)` 项一样要重算 baseline。
 - "玩具"的分界线不是调 libm，而是有没有合同 + 排期的替换计划；本节就是替换计划。
 
 ### 三步走
@@ -130,3 +146,4 @@ DDR 扩 2GB	已完成（DDR_SIZE=0x80000000，基址 0x80000000→0x40000000 避
   - **eclipse-allocate 不用重写**：表在 IR 里就是一个普通只读 SRAM buffer，走现有 bump/golden-mirror 流程零改动；走"保留区"方案也只改 2 行（bump 起点后移，和 mirror 重叠修复同款机制）。分配策略只在"策略变化"（动态分配、lifetime 重用）时才重写，"多一种 buffer"不触发。
   - 真正的代价在合同层：描述符加字段走冻结流程。代码全是零头（conversion 几十行、emit 几行、exec 几十行、loader 几行）。
   - 收益：查表读变成真实访存流，和数据读抢 bank——正好给 v0.3 的事件驱动调度器（见 roadmap"模拟器演进"节）当第一个真实用例。
+   - 业内先例：NVDLA SDP/CDP 的激活 LUT 就是这个模式——表驻片上 RAM、软件经寄存器接口加载、硬件线性插值（X 表 65 项 + Y 表 257 项、16bit/项、越界斜率外推、hit/miss 统计计数器），出处见 rtl-plan §2.1。注意 NVDLA 的 X 表还有"指数模式"（索引走 log2 域，LRN 场景），比我们 §7 的均匀 LUT 更进一步——v0.3 若嫌 64 项精度不够可以抄这个两级方案。

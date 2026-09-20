@@ -220,3 +220,45 @@
 1. ~~跑 §3.2 down_proj K 分块精度实验~~ —— 已完成（PASS：err=6.9e-4 → fp32 ACC 延到 v0.3）。
 2. ~~确认 §4.1 / §4.3 两个契约问题~~ —— 已确认（扩 ACT kind；MATMUL 加 transA/transB）。
 3. 冻结 ISA v0.2：ODS + spec + "v0.1→v0.2 每条变更的驱动算子"对照表（变更清单见 §4 表，已收敛）。REDUCE 的编码与数值合同已定（§4.4；docs/spec/isa.md §7 与 docs/spec/accuracy.md 已同步）。
+
+## 7. 架构对照：NVDLA 抄什么、不抄什么（业内对齐的边界）
+
+> 原则：**基础设施工程实践对齐 NVDLA（出处核实见 rtl-plan §2.1），算子集对齐 LLM 时代，数据流自主决策**。不做 NVDLA 复制——它是 2017 年的 CNN 推理引擎，算子集恰好是反面教材。
+
+### 7.1 NVDLA 支持 LLM 推理吗——不支持，且不是修补能救的
+
+- 数据通路全为卷积而生：CDMA → CBUF（512KB 多 bank 缓冲）→ CMAC（卷积 MAC 阵列，权重窗口驻留、特征流过）→ CACC → SDP（逐元素 bias/activation/scale）→ PDP（池化）/ CDP（LRN）+ BDMA；
+- **没有 GEMM 指令**：无任意 M/N/K 矩阵乘、无 transA/transB、无 batched GEMM（1×1 conv 只能凑合算矩阵向量）；
+- **没有 REDUCE**（无 rowwise max/sum）→ softmax/LayerNorm 在片上做不了；SDP 的 LUT 只覆盖逐元素 sigmoid/tanh/LRN 类函数；
+- int8/fp16、纯推理（无训练反传）；KV cache、批量注意力这些概念不存在。
+- 后果：LLM 的每个主力算子它要么缺、要么要靠 1×1 conv 仿射 + CPU 兜底的 hack（学界有演示性工作，工程不可用）。NVIDIA 自己的数据中心 LLM 推理走 GPU，DLA 的产品定位是边缘 CNN 感知（Drive 等）。
+- **对本项目的意义**：NVDLA 是"架构被工作负载时代抛下"的活标本——2017 年设计时 CNN 即全部，LLM 时代的主力算子一个都没有。EclipseNPU v0.2 恰好反着长：MATMUL 一等公民、REDUCE、broadcast、transA/transB、KV 静态烘焙——这些是 NVDLA 没有的，也是"不复制它"的实质内容。
+
+### 7.2 抄（基础设施工程实践，对齐）
+
+| 机制 | NVDLA 做法 | 我们的对应 |
+| --- | --- | --- |
+| cmodel/RTL 双轨 + testbench 比对 | 仓库三件套：RTL + Cmodel + testbench | rtl-plan §3 Verilator co-sim |
+| bank 化片上缓冲 | CBUF 512KB 多 bank 喂 CMAC | R2 的 bank 化 SRAM；SRAM 容量同为 512KB |
+| 非线性 LUT：表驻片上 RAM、软件加载、硬件线性插值 | SDP/CDP LUT：X 65 项 + Y 257 项、16bit/项、指数/线性模式、越界斜率外推、统计计数器 | ACT{EXP...} + h3-plan §7/§8；两级 hybrid 是 v0.3 精度不够时的后手 |
+| RISC-V 子系统 | NV_SMALL（SiFive Freedom），做配置/监控——控制，不算子 | 暂无；v0.3 若加控制核按此定位 |
+| 硬件统计计数器 | LUT hit/miss 计数寄存器 | rtl-plan §3 性能计数器（每 opcode 占用/stall） |
+| 边界行为写进合同 | LUT underflow/overflow 斜率寄存器 | accuracy.md 的 subnormal/溢出条款（同精神） |
+
+### 7.3 不抄（算子集/数据流——时代局限 + 有意差异）
+
+| NVDLA 的做法 | 为什么不抄 | 我们的对应 |
+| --- | --- | --- |
+| 卷积中心整套流水（CDMA/CBUF/CMAC/PDP/CDP） | 主线无卷积 | 全部不建；CNN 是可选项，LLM 跑通后按兴趣 |
+| 无 GEMM/REDUCE/transpose | LLM 主力算子缺位 | MATMUL 一等公民、REDUCE{MAX,SUM,SQUARE_SUM,ARGMAX}、transA/transB（§4.3/§4.4） |
+| host 直配寄存器、算子库形态、编译器弱 | 长尾算子痛苦、融合受限——正是我们自己公司的日常 | linalg 入口 + 编译器生成一切 |
+| weight-stationary 阵列（权重驻留 MAC 单元） | 阵列内权重广播网络复杂 | output-stationary 16×16（RTL R4 敲定），权重复用靠 DMA tiling |
+
+### 7.4 LLM 时代业内有、我们还没有的（记录成决策点，不慌）
+
+| 项 | 业内状态 | 我们的决策点 |
+| --- | --- | --- |
+| decode M=1 GEMV 模式 | 专设瘦矩阵/行广播路径 | H3.5 波形量化决策（§5、rtl-plan R4） |
+| 权重流式带宽（LLM 推理是 memory-bound，权重 DMA 是主角）+ int8/W4 量化 | LLM 推理标配 | H4 roofline 出数字；int8 后置已记录 |
+| 大片上 SRAM | LLM 芯片 MB 级（Groq LPU 百 MB 级、TPU VMEM 几十 MB） | 512KB 靠 tiling 兜底——写进 roofline 叙事，是故事不是缺陷 |
+| 互联/多卡 | 规模化推理标配（NVLink/ethernet） | 远期可选项（roadmap 已记）；岗位 gap 用 DeepEP/NCCL 阅读线补 |
