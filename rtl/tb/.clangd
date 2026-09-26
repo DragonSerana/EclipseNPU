@@ -1,0 +1,11 @@
+# Verilator 的 testbench 不走 CMake，所以 build/compile_commands.json 里没有它们。
+# 少了这份编译命令，clangd 就找不到 verilated*.h（Debian 包里的 Verilator 运行时）
+# 和 Verilator 生成的 V<模块名>.h（在 --Mdir 输出目录里），编辑器里于是全是红线。
+#
+# 以后每加一个 R 单元（bank / dma / mac …），把它的 build/rtl/<单元> 在这里补一行。
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -I/usr/share/verilator/include
+    - -I/usr/share/verilator/include/vltstd
+    - -I/home/serana/EclipseNPU/build/rtl/pip

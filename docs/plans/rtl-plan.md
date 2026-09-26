@@ -58,7 +58,7 @@
 
 - Verilator 把 RTL 编成 C++，与 cmodel 挂**同一个 test harness**：同一份指令流分别喂给 cmodel 和 Verilated RTL，在**指令边界**比对 SRAM/DDR 内容与 cycle 数。
 - 比对的开销要先算清：`CModel` 构造时就 `ddr_.resize(DDR_SIZE)`（v0.2 是 2GB），TB 再链一个 CModel 就是两份 2GB 虚拟内存，全量逐字节 diff 不可行。比对按区域做（每条指令声明的 dst/src 范围）或按哈希，且 TB 侧的 DDR 尺寸要可配。
-- `.easm` 解析器现在在 `tools/eclipse-run.cpp` 的匿名命名空间里（`parseEasm`），TB 复用不了。开工前先把它抽成库（放 EclipseRuntime 或单独一个小 lib）——这是 R1 的前置条件，不是"顺手"能带过的。
+- `.easm` 解析器现在在 `tools/eclipse-run.cpp` 的匿名命名空间里（`parseEasm`），TB 复用不了。要抽成库（放 EclipseRuntime 或单独一个小 lib）——这是 R3/R4 进 harness 之前的前置条件；R1/R2 的 TB 是手写激励（直接推 valid/ready、直接读写 SRAM），用不到它，所以别把它排在第一晚。
 - 差异归因分三类，不能一句"两边必有一错"：
   1. cmodel 的假设错（例如 per-instruction 的固定开销，见 §4 R4）；
   2. **模型有意串行、RTL 真并发**：cmodel 的 DMA 就是 `memcpy`、`SYNC` 返回 0、指令由 host 直接 `push`、没有取指；RTL 一旦真做异步 DMA 与 sequencer 取指，cycle 必然系统性不等。这一类不是 bug，是 roadmap"模拟器演进"要消灭的对象，也是本支线最值钱的产出；
@@ -71,7 +71,7 @@
 
 排序依据是"惩罚发生在哪"，不是算术难度。
 
-- **R1：valid/ready 流水与反压**（1 周内）。一个带 skid buffer 的两级流水，下游加一个真实的 stall 源（比如每 4 拍只能收 1 拍）。
+- **R1：valid/ready 流水与反压**（1 周内）。一个带 skid buffer 的两级流水，下游加一个真实的 stall 源（比如每 4 拍只能收 1 拍）。TB 是手写激励，不涉及 .easm。
   done：能凭手算写出反压如何逐级传播、涉及哪些信号组合、为什么 `ready` 的组合逻辑不成环；波形与手算一致。
 - **R2：bank 化 SRAM 与仲裁**。SRAM 做成 4/8 bank（字交织）+ 仲裁 FSM：sequencer 发 DMA 写的同时 MAC 在读，端口冲突在这里第一次真实发生。开工前先写下端口预算：16×16 阵列每拍需要 16 个 A + 16 个 B = **32 个元素读**，而 DMA 通道只有 16 元素/拍（`DMA_BYTES_PER_CYCLE=32`）——SRAM 的读端口和 DMA 通道是两条不同的带宽，这 2× 从哪来是 R2 要回答的第一个问题。
   done：bank 冲突 stall 在波形里可见并与手算对上；能回答"bank 数/读端口数怎么决定 `N_tile`"——即用端口预算重新推一遍 ops-audit §4.2 那个"400KB < 512KB"的账。
@@ -121,7 +121,7 @@ RTL 会把 ISA 和 cmodel 没定义的东西逼出来：一个信号要么在这
 
 - 插入点：**与 H3.3 并行**，固定每周 ≤15% 的时间，不设 gate，不阻塞主线。原先"H3.3 之前先校准"的理由站不住：H3.3 的 90% 是同一模型下的相对赛跑，fill/drain 在比值里抵消（§1）；Timeloop 那一类流程也是解析模型先做设计空间探索、RTL 在流程末端（§2.1）。本支线真正的理由是硬件设计的第一手理解 + 校准值的因果解释。
 - 主线不等 RTL：算子/编译器在 cmodel 上先行；R5/R6 不阻塞任何主线。
-- **前置（不是 RTL 的工作，但没有它 RTL 没有可比对象）**：先把 cycle 模型的形状改对——MATMUL 加 per-tile 的 `(K+D)` 项、wave quantization（M/N 不是阵列边长的倍数时的填充浪费）改成 `ceil(M/16)×ceil(N/16)`，再出一张假设值的敏感度表（D ∈ {0,2,4,8}、SFU 1/4 vs 1/1、`ELEM_PER_CYCLE` 128 vs 64 各自会不会翻转 H3.3 的 90% 判定）。纸面改动，半天到一天。
+- **前置（不是 RTL 的工作，只挡 R4 的 cycle 对比，不挡 R1–R3 开工）**：先把 cycle 模型的形状改对——MATMUL 加 per-tile 的 `(K+D)` 项、wave quantization（M/N 不是阵列边长的倍数时的填充浪费）改成 `ceil(M/16)×ceil(N/16)`，再出一张假设值的敏感度表（D ∈ {0,2,4,8}、SFU 1/4 vs 1/1、`ELEM_PER_CYCLE` 128 vs 64 各自会不会翻转 H3.3 的 90% 判定）。纸面改动，半天到一天。
 - 校准值的归属：R2/R3/R4 的产物回填 `EclipseConstants` 与 `cmodel_cycles.cpp` 的公式形式，落在 H3.4 的 cycle 报告里。H3.3 的相对对比不依赖校准值，但依赖模型形状正确。
 - 降级/停下：每层 done 独立，停在哪都不浪费。不写"X 周没进展就降级"的硬阈值——业余时间的估计本来就不准，写了必然触发。改成"连续两个自然月没有可跑的仿真就停"。
 
@@ -140,23 +140,26 @@ verilator --version    # 5.x 即可
 
 ### 8.1 目录与构建
 
+RTL 是本工程的一个组成部分、不是独立工程，所以设计、testbench、构建产物收在 `rtl/` 一个顶层目录下，与 `compiler/`、`runtime/` 平级；设计（可综合）和 testbench（C++、不可综合）用子目录分开——两者的分界是"会不会变成电路"，混放早晚会把 `initial`/`$display` 抄进设计文件。
+
 ```
-rtl/                 # 可综合源码（SystemVerilog）
+rtl/                 # RTL 组成部分
   common/            # 共享参数（package：TILE_M、BANKS…）
-  pip/               # R1
-  bank/              # R2
-  dma/  top/         # R3/R4
-  mac/               # R4
-tb/                  # C++ harness（Verilator），链接 EclipseRuntime
-  common/            # cmodel 桥、.easm 解析（从 tools/eclipse-run.cpp 抽出来）
-  pip/  bank/  mac/
+  pip/               # R1 设计
+  bank/              # R2 设计
+  dma/  top/         # R3/R4 设计
+  mac/               # R4 设计
+  tb/                # testbench（C++，Verilator），链接 EclipseRuntime
+    common/          # cmodel 桥、.easm 解析（从 tools/eclipse-run.cpp 抽出来）
+    pip/  bank/  mac/
+build/rtl/<单元>/     # Verilator 生成的 C++ 与可执行文件（.gitignore）
 ```
 
 - 先手敲命令跑通，再固化为 CMake custom target（目标名 check-rtl，接 §3 的 CI）：
 
 ```bash
 verilator --cc --exe --build -j 8 --trace --assert -Wall \
-  --top-module mac_array rtl/mac/*.sv tb/mac/harness.cpp \
+  --top-module mac_array rtl/mac/*.sv rtl/tb/mac/harness.cpp \
   -CFLAGS "-Iruntime/include" --Mdir build/rtl/mac -o tb_mac
 ```
 
@@ -195,3 +198,12 @@ verilator --cc --exe --build -j 8 --trace --assert -Wall \
 - 校准值（per-tile fill/drain、bank 冲突 stall、取指拍数、加法器拍数）→ 回填 `EclipseConstants` 与 `cmodel_cycles.cpp` → H3.4 cycle 报告。
 - 歧义清单里的"改合同"条目 → `docs/spec/isa.md`；"改模型"条目 → cmodel；"记已知限制"条目 → 留在本文件里。
 - R4 开工前读 Gemmini 的 PE/累加结构、VTA 的指令驱动结构（§2.2），写三行对照笔记（我们的做法/它的做法/差异定性）。
+
+
+
+
+
+
+    给 counter 加组合输出 cnt_next = cnt + 1，看它和 cnt 是不是同一时刻变化；
+    把 cnt <= cnt + 1 换成 cnt <= cnt_next，看波形变没变、为什么；
+    把 rst_n 拉高那行挪到 posedge 前面，看 cnt 第一次变 1 是第几拍。

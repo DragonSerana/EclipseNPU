@@ -5,3 +5,4 @@ tests/data/*.raw
 .vscode/
 EclipseNPU.code-workspace
 *raw
+*.vcd
