@@ -11,6 +11,7 @@
 
 2. 
 verilator --lint-only -Wall --top-module counter rtl/pip/counter.sv
+verilator --cc --Mdir build/rtl/pip --top-module pipe_slice rtl/pip/pipe_slice.sv 生成modelu类和.h
 
 .sv 是 SystemVerilog 源代码文件的后缀
 --lint-only 
@@ -64,7 +65,7 @@ always_ff描述，有时钟，那就是寄存器，可以存值，比如clk。�
 
     上游     ──> s_valid   ┌────────────────┐  m_valid ──>  下游
             ──> s_data    │ 单级寄存器切片  │  m_data  ──>
-            <── s_ready   └────────────────┘  <── m_ready
+            <── s_ready   └────────────────┘ m_ready <── 
 
     valid（我有数据）和 data（数据）同向，由发送方驱动；
     ready（我能收）反向，由接收方驱动
@@ -73,3 +74,7 @@ always_ff描述，有时钟，那就是寄存器，可以存值，比如clk。�
 6. 拍(cycle)和沿
     沿上 = 时钟跳变的那一瞬间，通常是上升沿 0 → 1
     一拍 = 一个时钟周期，也就是两个相邻上升沿之间的时间。
+    同一个沿上，旧的被取走、新的被装进来，同时发生。可以理解高电平拿走数据，低电平更新数据
+
+7. 反压
+    下游把 ready 拉低（"我这一拍收不了"），这个信号沿着 ready 线一路往上游传，逼着上游停下等待
