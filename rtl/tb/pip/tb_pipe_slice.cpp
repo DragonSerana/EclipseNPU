@@ -24,28 +24,35 @@ int main(int argc, char **argv) {
 
   top->rst_n = 0;
   top->s_valid = 1;
-  top->m_ready = 1;
+  top->m_ready = 0;
 
   bool allPass = true;
+  int send_cnt = 0;
+  int recv_cnt = 0;
 
   for (int t = 0; t < 40; t++) {
-    top->s_data = t;
+    top->s_data = send_cnt;
 
     tick(top);
     vcd->dump(t * 2);
 
-    if (top->s_valid && top->s_ready && top->m_valid) {
-      // 因为这里的m_data,是获取上一cycle的数据，此次上升沿结束后，寄存器的值才会变成本次
-      if ( top->rst_n && top->m_data != t-1 ) {
-        std::printf("top->rst_n = %d, t-1 = %2d, m_data = %3d\n", top->rst_n, t-1, (int)top->m_data);
-        allPass = false;
-      }
+    if (top->s_valid && top->s_ready && top->rst_n)
+      send_cnt++;    
+    if (top->m_valid && top->m_ready) {
+      printf("ly @@@ top->m_data = %d, recv_cnt = %d \n", top->m_data, recv_cnt);
+      if (top->m_data != recv_cnt) allPass = false;
+      recv_cnt++;
     }
 
     edge(top);
     vcd->dump(t * 2 + 1);
 
     if (t == 2) top->rst_n = 1;
+    if (t % 4 == 0) {
+      top->m_ready = 1;
+    }
+    else 
+      top->m_ready = 0;
   }
 
   if( allPass ) {
