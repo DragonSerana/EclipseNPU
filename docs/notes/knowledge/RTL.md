@@ -39,21 +39,23 @@ module counter (
   input  logic       en,
   output logic [7:0] cnt
 );
-counter可以理解成一个芯片，input可以理解成 芯片的引脚输入，output是 并行 8根引脚输出。logic可以当成一根线或者一个信号
+    counter可以理解成一个芯片，input可以理解成 芯片的引脚输入，output是 并行 8根引脚输出。logic可以当成一根线或者一个信号
 
-always_ff @(posedge clk) begin
-    if (!rst_n)  cnt <= 8'd0;
-    else if (en) cnt <= cnt + 8'd1;
-end
-assign cnt_next = cnt + 8'd1;
+    always_ff @(posedge clk) begin
+        if (!rst_n)  cnt <= 8'd0;
+        else if (en) cnt <= cnt + 8'd1;
+    end
+    assign cnt_next = cnt + 8'd1;
 
-always_ff	always flip-flop	寄存器 / 时序逻辑(输出不仅看当前输入，还看过去存下来的状态，比如cnt)
-posedge clk clk上升沿触发
-8'd0 8位宽的，十进制0
-<= ,clk到来之后，所有 <= 右边的表达式，用时钟沿之前的值（旧值）计算，所有 <= 左边的寄存器，在同一个时间点统一更新为新值
-= ，立刻更新为新值，不需要等待clk
+    always_ff	always flip-flop	寄存器 / 时序逻辑(输出不仅看当前输入，还看过去存下来的状态，比如cnt)
+    posedge clk clk上升沿触发
+    8'd0 8位宽的，十进制0
+    <= ,clk到来之后，所有 <= 右边的表达式，用时钟沿之前的值（旧值）计算，所有 <= 左边的寄存器，在同一个时间点统一更新为新值
+    = ，立刻更新为新值，不需要等待clk
 
-always_ff描述，有时钟，那就是寄存器，可以存值，比如clk。没时钟的就是导线，只有传输没有存值的功能
+    always_ff描述，有时钟，那就是寄存器，可以存值，比如clk。没时钟的就是导线，只有传输没有存值的功能
+
+    always_ff里面的一段if/else if用来描述一个寄存器。if内部的逻辑，就是从寄存器的角度来看，这次上升沿寄存器的值
 
 4. 寄存器
     寄存器，就是一组并排的D触发器。 D->D触发器->Q
@@ -78,3 +80,5 @@ always_ff描述，有时钟，那就是寄存器，可以存值，比如clk。�
 
 7. 反压
     下游把 ready 拉低（"我这一拍收不了"），这个信号沿着 ready 线一路往上游传，逼着上游停下等待
+
+8. 

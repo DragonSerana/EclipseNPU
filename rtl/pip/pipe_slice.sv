@@ -8,26 +8,29 @@ module pipe_slice (
   output logic [7:0] m_data,
   input  logic       m_ready 
 );
-  // 两个寄存器：一个 1 位的标志、一个 8 位的数据
-  logic       reg_valid;
-  logic [7:0] reg_data;
+  logic [1:0] cnt;
+  logic [7:0] r0;
+  logic [7:0] r1;
+  logic push, pop;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
-      reg_valid <= 1'd0;
-      reg_data <= 8'd0;
-    // 只要reg_valid是空的，我就怎么都能接收数据，ready并不是能不能处理完，而是是否能存储这个clk的数据 
-    end else if (s_valid && (!reg_valid || m_ready)) begin
-      reg_valid <= s_valid;
-      reg_data <= s_data;
-    end else if (!s_valid && m_ready && reg_valid) begin
-      reg_valid <= 1'd0;
-      reg_data <= 8'd0;      
+      cnt <= 2'd0;
+      r0 <= 8'd0;
+      r1 <= 8'd0;
+    end else begin
+      cnt <= cnt+push-pop;
+      if (pop && cnt == 2'd2)     r0 <= r1;
+      else if (push && (cnt==0 || pop)) r0 <= s_data;
+      
+      if (cnt==1 && push && !pop) r1 <= s_data;
     end
   end
 
-  assign m_valid = reg_valid;
-  assign m_data  = reg_data;
-  assign s_ready = (m_valid == 1'd0) ? 1'b1 : m_ready ;
+  assign m_valid = cnt > 0;
+  assign m_data  = r0;
+  assign s_ready = cnt < 2;
+  assign push = s_valid && s_ready;
+  assign pop = m_valid && m_ready;
 
 endmodule
