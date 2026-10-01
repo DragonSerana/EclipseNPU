@@ -129,3 +129,22 @@ MAC阵列     MATMUL                        16×16 = 256 MAC/拍
 SIMD(ALU)  ELEMENTWISE / REDUCE / RELU   128 元素/拍
 SFU        EXP / RSQRT / SILU            32 元素/拍
 DMA        LOAD / STORE                  32 B/拍
+
+# output-stationary 
+    当输入大于MAC（16x16）阵列时，需要驻留。比如A不动，然后 B往后 挪 n/16次
+
+# 带宽
+①	SRAM → PE 阵列	SRAM 的读端口	取决于 bank 数
+②	PE → SRAM（写回）	SRAM 的写端口	取决于 bank 数
+③	DDR → SRAM	DMA 引擎	16 个数/拍（DMA_BYTES_PER_CYCLE=32B）
+
+# SRAM bank
+    SRAM的bank,是为了提高从SRAM到PE的并行度
+    一个 cycle 最多搬运就是 bank 个数据，包括 sram到 pe或者 dma在 ddr和 sram来回搬运
+    并不是按照顺序分，而是交叉分，比如0/4是一个bank,1/5是一个bank
+    b0, b1, b2, b3, b0, b1, b2, b3
+
+# SRAM 
+    1W1R模型,如果读写的地址和数据复用 ，然后通过另外的 pin区分 是读还是写 。不过这样的话，就做不到同时读写了。所以这里用两套。
+    // 组合读，这样是不不合理，因实际物理需要晶体管变动，所以一般是同步读，即clk到来后再给出
+    assign rdata = mem[raddr]; 

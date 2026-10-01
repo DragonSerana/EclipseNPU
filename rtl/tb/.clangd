@@ -9,3 +9,4 @@ CompileFlags:
     - -I/usr/share/verilator/include
     - -I/usr/share/verilator/include/vltstd
     - -I/home/serana/EclipseNPU/build/rtl/pip
+    - -I/home/serana/EclipseNPU/build/rtl/bank

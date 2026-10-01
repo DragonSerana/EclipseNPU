@@ -1,12 +1,12 @@
 # R1 设计笔记：valid/ready 流水与反压
 
-> 目录：设计 `rtl/pip/`，testbench `rtl/tb/pip/`，构建产物 `build/rtl/pip/`（Verilator 生成，不进 git）
+> 目录：设计 `rtl/*.sv`、testbench `rtl/tb/tb_*.cpp`（平铺，见 rtl-plan §8.1），构建产物 `build/rtl/pip/`（Verilator 生成，不进 git）
 > 前置：hello-verilator 计数器已跑通，GTKWave 已能看到波形。
 > 纪律：本文件里标"手算"的地方必须自己写；波形调试自己来（rtl-plan §6）。
 
 ## 0. 先用计数器搞清"组合 vs 时序"（30 分钟，做完再往下）
 
-`rtl/pip/counter.sv` + `rtl/tb/pip/tb_counter.cpp` 已经能跑、GTKWave 能看到波形了。开始 R1 之前先做这三个实验，否则 valid/ready 会写得很玄。
+`rtl/counter.sv` + `rtl/tb/tb_counter.cpp` 已经能跑、GTKWave 能看到波形了。开始 R1 之前先做这三个实验，否则 valid/ready 会写得很玄。
 
 > 波形里把时间换成拍号：`拍号 = 时间 ÷ 2`，余数 0 是 clk=0 那一刻，余数 1 是 clk=1（上升沿之后）那一刻。GTKWave 显示成 ps 只是 Verilator 的默认时间单位（1ps/1ps），跟真实时间无关，别去读它。
 

@@ -145,21 +145,21 @@ RTL 是本工程的一个组成部分、不是独立工程，所以设计、test
 ```
 rtl/                 # RTL 组成部分
   common/            # 共享参数（package：TILE_M、BANKS…）
-  pip/               # R1 设计
-  bank/              # R2 设计
-  dma/  top/         # R3/R4 设计
-  mac/               # R4 设计
+  *.sv               # 设计（可综合），平铺；单元多到看不清时再分级
   tb/                # testbench（C++，Verilator），链接 EclipseRuntime
-    common/          # cmodel 桥、.easm 解析（从 tools/eclipse-run.cpp 抽出来）
-    pip/  bank/  mac/
+    .clangd          # 给编辑器补 verilated 头文件路径（TB 不走 CMake）
+    tb_*.cpp         # 平铺，一个顶层模块一个 TB
+    common/          # cmodel 桥、.easm 解析（R3/R4 时加）
 build/rtl/<单元>/     # Verilator 生成的 C++ 与可执行文件（.gitignore）
 ```
+
+（2026-10 调整：原方案给 `rtl/` 和 `rtl/tb/` 各按单元建一级子目录，实测两级镜像目录在只有两三个文件时纯属负担——`--top-module` 已经区分了单元，构建目录也已经按单元分开。先平铺，等文件数真的多了再分级。）
 
 - 先手敲命令跑通，再固化为 CMake custom target（目标名 check-rtl，接 §3 的 CI）：
 
 ```bash
 verilator --cc --exe --build -j 8 --trace --assert -Wall \
-  --top-module mac_array rtl/mac/*.sv rtl/tb/mac/harness.cpp \
+  --top-module mac_array rtl/mac_*.sv rtl/tb/tb_mac.cpp \
   -CFLAGS "-Iruntime/include" --Mdir build/rtl/mac -o tb_mac
 ```
 
