@@ -143,24 +143,30 @@ verilator --version    # 5.x 即可
 RTL 是本工程的一个组成部分、不是独立工程，所以设计、testbench、构建产物收在 `rtl/` 一个顶层目录下，与 `compiler/`、`runtime/` 平级；设计（可综合）和 testbench（C++、不可综合）用子目录分开——两者的分界是"会不会变成电路"，混放早晚会把 `initial`/`$display` 抄进设计文件。
 
 ```
-rtl/                 # RTL 组成部分
-  common/            # 共享参数（package：TILE_M、BANKS…）
-  *.sv               # 设计（可综合），平铺；单元多到看不清时再分级
-  tb/                # testbench（C++，Verilator），链接 EclipseRuntime
-    .clangd          # 给编辑器补 verilated 头文件路径（TB 不走 CMake）
-    tb_*.cpp         # 平铺，一个顶层模块一个 TB
-    common/          # cmodel 桥、.easm 解析（R3/R4 时加）
-build/rtl/<单元>/     # Verilator 生成的 C++ 与可执行文件（.gitignore）
+rtl/                  # RTL 组成部分
+  common/             # 共享参数（package：TILE_M、BANKS…）
+  pip/                # R1 设计
+  bank/               # R2 设计
+  dma/  top/          # R3/R4 设计
+  mac/                # R4 设计
+  tb/                 # testbench（C++，Verilator），链接 EclipseRuntime
+    .clangd           # 给编辑器补 verilated 头文件路径（TB 不走 CMake）
+    pip/  bank/  dma/  mac/
+    common/           # cmodel 桥、.easm 解析（从 tools/eclipse-run.cpp 抽出来）
+build/rtl/<tb名>/      # Verilator 生成的 C++ 与可执行文件（.gitignore）
 ```
 
-（2026-10 调整：原方案给 `rtl/` 和 `rtl/tb/` 各按单元建一级子目录，实测两级镜像目录在只有两三个文件时纯属负担——`--top-module` 已经区分了单元，构建目录也已经按单元分开。先平铺，等文件数真的多了再分级。）
+- 两边都按单元分一级子目录：设计在 `rtl/<单元>/`，对应的 testbench 在 `rtl/tb/<单元>/`。
+- **构建目录按 testbench 名分，不按单元名。** Verilator 会往 `--Mdir` 里写 `V<模块名>.h`，而一个单元会有多个 TB（R2 就有 `tb_sram` 和 `tb_bank_map`），共用一个 Mdir 会互相覆盖。
+
+（2026-10 目录两次调整的记录：一度改成"设计和 TB 各自平铺"，理由是文件只有两三个时两级镜像目录纯属负担；涨到 8 个文件后重新按单元分级。同时 `build/rtl/<单元>/` 改成 `build/rtl/<tb名>/`，原因见上一条——R2 一个单元两个 TB 已经在 Mdir 上撞过一次。）
 
 - 先手敲命令跑通，再固化为 CMake custom target（目标名 check-rtl，接 §3 的 CI）：
 
 ```bash
 verilator --cc --exe --build -j 8 --trace --assert -Wall \
-  --top-module mac_array rtl/mac_*.sv rtl/tb/tb_mac.cpp \
-  -CFLAGS "-Iruntime/include" --Mdir build/rtl/mac -o tb_mac
+  --top-module mac_array rtl/mac/*.sv rtl/tb/mac/tb_mac.cpp \
+  -CFLAGS "-Iruntime/include" --Mdir build/rtl/tb_mac -o tb_mac
 ```
 
 ### 8.2 第 0 步：Hello Verilator（1–2 晚，把工具链跑热）

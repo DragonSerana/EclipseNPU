@@ -2,11 +2,15 @@
 # 少了这份编译命令，clangd 就找不到 verilated*.h（Debian 包里的 Verilator 运行时）
 # 和 Verilator 生成的 V<模块名>.h（在 --Mdir 输出目录里），编辑器里于是全是红线。
 #
-# 以后每加一个 R 单元（bank / dma / mac …），把它的 build/rtl/<单元> 在这里补一行。
+# 每个 testbench 一个 --Mdir（Verilator 会往 Mdir 里写 V<模块名>.h，
+# 多个 TB 共用一个目录会互相覆盖），所以这里一个 TB 列一行。
+# 加新 TB 时：编译命令里用 --Mdir build/rtl/<tb名>，然后在这里补一行。
 CompileFlags:
   Add:
     - -std=c++17
     - -I/usr/share/verilator/include
     - -I/usr/share/verilator/include/vltstd
-    - -I/home/serana/EclipseNPU/build/rtl/pip
-    - -I/home/serana/EclipseNPU/build/rtl/bank
+    - -I/home/serana/EclipseNPU/build/rtl/tb_counter
+    - -I/home/serana/EclipseNPU/build/rtl/tb_pipe_slice
+    - -I/home/serana/EclipseNPU/build/rtl/tb_sram
+    - -I/home/serana/EclipseNPU/build/rtl/tb_bank_map
