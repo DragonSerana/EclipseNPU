@@ -85,3 +85,28 @@ module counter (
     同一个变量 logic [15:0] rdata;
     在clk内部<=赋值，那就是寄存器
     assign赋值，那就是导线
+
+9.   input  logic [$clog2(DEPTH)-1:0] rd_addr [0:NBANK-1],
+    parameter DEPTH = 128,
+    对127求log2,结果就是7,这里就表示每个bank都一个7位地址
+
+10. 循环例化
+    循环生成sram
+    genvar b 是"生成期的整数"，生成结束后消失，不在电路中
+    begin : g_bank 给这一组实例起个名字（生成块标签
+    generate
+        for (genvar b = 0; b < NBANK; b++) begin : g_bank
+        sram #(
+            .DEPTH(DEPTH),
+            .DW   (DW)
+        ) u_bank (
+            .clk  (clk),
+            .rst_n(rst_n),
+            .we   (wr_en[b]),
+            .waddr(wr_addr),
+            .wdata(wr_data),
+            .raddr(rd_addr[b]),
+            .rdata(rd_data[b])
+        );
+        end
+    endgenerate
