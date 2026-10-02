@@ -35,6 +35,15 @@
     内存控制器按照16Byte突发，突发必须是16的倍数，如果地址不是16的倍数，需要突发两次，如果没有地址对齐，比如地址落在了0x0e的位置，如果后面一个数据有16byte，之前一次突发就能拿到，现在要两次
     计算指令（MATMUL/ELEMENTWISE/ACT/REDUCE）的操作数在 SRAM 中必须 packed（行连续）存储；只有 DMA 支持 stride。
     DDR中，input tensor是啥样就啥样，SRAM中必须是packed。
+    但 packed 不是免费的（R2 实测，见 docs/notes/design/rtl-r2.md）：packed = 行主序 = 行距 K，
+        而 bank 数是 2 的幂、K 通常也是 2 的幂 → K % bank数 == 0。此时阵列按列读
+        （k 固定、i 变化，地址相差 K）会全部落在同一个 bank：K=1024/bank=32 时是 16 路冲突，
+        慢 16 倍（R2 的玩具例子：行距 128，16 拍；改成 129 后 1 拍）。
+    所以布局是【编译器】的责任，不是硬件的自由：编译器要么给行距 padding（K → K+1，奇数，
+        与 2 的幂永远互质），要么做 swizzle。硬件只看地址，分不出哪个下标是行哪个是列，
+        所以编译器掌握语义这件事是做对布局的前提。
+    另：lhs 和 rhs 不能共用同一个 bank 空间（一个是跨步访问、一个是连续访问，会互撞）；
+        这条影响"dst+lhs+rhs 三块 tile 必须同时驻留 SRAM"的约束，见 ops-audit §4.2。
 
 ## 执行模型
     指令 = (opcode: u32, descPtr: u32)，定长 8 字节；descPtr 指向命令队列区中的参数结构体（descriptor）。
@@ -296,6 +305,9 @@
 
 ## cycle模型
     当前 cycle 模型只包含 DMA 突发、MAC 吞吐、SIMD 吞吐；bank 冲突、多端口并行、惩罚周期等微架构细节留到后续性能模型
+        （R2 已给出 bank 冲突的量级：布局不做处理时是 16 路冲突、慢 16 倍；padding/swizzle 之后消失。
+         所以"模型把冲突记为 0"有一个前提——【编译器把布局做对了】。这个前提必须写进 H3.4 的报告，
+         不能默认成立。端口预算的结论见 docs/notes/design/rtl-r2.md §6.1。）
     ELEMENTWISE_* 与 REDUCE 的元素级部分走 SIMD（ALU）引擎，= ceil(rows*cols / ELEM_PER_CYCLE)；
     REDUCE 每一行是独立的归约，最后一拍的尾巴不能和下一行拼（EWISE 没有行边界，可以跨行打包）：
     = rows * ceil(cols / ELEM_PER_CYCLE) + rows * LOG2(ELEM_PER_CYCLE)

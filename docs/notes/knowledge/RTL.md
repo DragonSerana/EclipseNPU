@@ -110,3 +110,20 @@ module counter (
         );
         end
     endgenerate
+
+11. bank冲突
+    因为矩阵乘法A是按照列进入MAC阵列。如果行数被bank数字整除，那就所有访问都命中同一个bank，浪费cycle。
+    XOR: 异或，将高位数据与低位bank号异或作为真正的bank号，降低重复概率，但是这个如果行足够长，导致前序的地址折算不进去，那就有问题
+        原来的：bank = addr[4:0]
+        XOR 的：bank = addr[4:0] ^ addr[9:5]
+    Padding： 每行多存一个，比如128->129,这样就不会被bank数字整除 
+    swizzle：地址改为存到 i*8 + (j ^ i)，这样就把行号也算进了bank的计算公式，之前的
+        地址 = i*8 + j
+        bank = (i*8 + j) % 8 = j
+        
+        swizzle后
+        地址 = i*8 + (j ^ i)
+        bank = 地址 % 8
+        = (i*8 + (j ^ i)) % 8
+        = (j ^ i) % 8
+        = j ^ i

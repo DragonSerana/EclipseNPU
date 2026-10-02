@@ -13,5 +13,5 @@ CompileFlags:
     - -I/home/serana/EclipseNPU/build/rtl/tb_counter
     - -I/home/serana/EclipseNPU/build/rtl/tb_pipe_slice
     - -I/home/serana/EclipseNPU/build/rtl/tb_sram
-    - -I/home/serana/EclipseNPU/build/rtl/tb_bank_map
     - -I/home/serana/EclipseNPU/build/rtl/tb_bank_mem
+    - -I/home/serana/EclipseNPU/build/rtl/tb_bank_xbar

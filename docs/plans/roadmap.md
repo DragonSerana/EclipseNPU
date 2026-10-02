@@ -1,4 +1,4 @@
-# EclipseNPU Roadmap v0.7
+# EclipseNPU Roadmap v0.8
 
 > 目标：从零完成一颗 NPU（ISA → 工具链 → 算子 → simulator/cmodel），在自研模拟器上跑通 Qwen2.5-0.5B，并在真硬件（AMD RDNA4，9070 XT）上验证同一套编译/tiling 方法论。
 > 方向取舍：主攻编译器 + 算子。通信不设为主线目标；多卡是 LLM 里程碑之后的远期可选项。
@@ -8,6 +8,7 @@
 > v0.5 变更：H3 的 v0.2 op 清单按算子审计大幅瘦身（逐条推导见 docs/plans/h3-plan.md）；超越函数"合同定精度、算法实验冻结"策略入册；新增模拟器演进线（v0.3 事件驱动调度 → H5 按需时钟驱动）。
 > v0.6 变更：新增 RTL 支线（docs/plans/rtl-plan.md）——定位是学习 + cycle 模型校准，非流片；cmodel 角色从"硬件本身"反转为"合同/golden"，RTL 为实现；插入 H3.2 之后、H3.3 之前做 R1–R3。
 > v0.7 变更：RTL 支线重排（rtl-plan 2026-09 调整）——单元顺序改为"先存储系统、后算术阵列"（R1 流水与反压 → R2 bank 化 SRAM 与仲裁 → R3 DMA 引擎与取指 → R4 MAC 阵列与顶层 → R5 其余执行单元按需 → R6 bit-exact 加法器可选）；定位改为与 H3.3 并行的固定预算支线，不设 gate；每层固定产出歧义清单。
+> v0.8 变更：R2 完成，回填了两条影响主线形状的结论（详见 docs/plans/rtl-plan.md 与 docs/notes/design/rtl-r2.md §6）——① **布局由编译器决定**，不是硬件自动的（packed 行主序 + 2 的幂 bank 数 = 列访问 16 路冲突，慢 16 倍；padding/swizzle 是编译器的事）；② **存储不是"一块 512KB"，是"几块专用 buffer"**，lhs 和 rhs 在同一 bank 空间会互撞。→ isa.md 内存模型与 cycle 模型已同步，ops-audit §4.2 已补上端口/布局那一半的账。
 
 ## 指导原则
 
@@ -123,6 +124,14 @@ cycle 模型与 roofline（H2 与 H4 之间随进度推进）：
 - 插入点：与 H3.3 并行，固定每周 ≤15%，不设 gate，不阻塞主线（原"H3.3 之前先校准"的理由不成立：H3.3 的 90% 是同一模型下的相对赛跑，fill/drain 在比值里抵消）。
 - 每层固定产出歧义清单（ISA/cmodel 没定义、被 RTL 逼出来的问题），回流到 isa.md 与 cmodel。
 - 与模拟器演进线的分工：模拟器演进管"系统级时序建模"（overlap/资源时间线），RTL 支线管"单元级参数校准 + 设计认知"，两者不互相替代。
+- **进度**：R1 ✅（valid/ready + skid buffer）；**R2 ✅（bank 化 SRAM + 仲裁，2026-10）**。
+  - done 标准达成：手算 17 拍 = RTL 17 拍（A 的跨步行距 128 与 bank 数 32 同源 → 16 路冲突）。
+  - 三种映射对照实测：行主序 17 拍 / padding 2 拍 / XOR 3 拍。
+  - **三条要记住的结论**（详见 docs/notes/design/rtl-r2.md §6.4）：
+    1. **布局是杠杆，而且必须由编译器决定** —— 硬件只看地址、分不出行和列；编译器知道语义，所以 padding/swizzle 是它的活，不是硬件的自由。
+    2. **先 padding 保底，等 R4 定了 tile 形状再上 swizzle** —— padding 不用设计但对任何 K 有效；swizzle 不浪费容量但必须为访问模式设计。布局策略要做成编译器里可替换的一档。
+    3. **存储不是"一块 512KB"，是"几块专用 buffer"** —— lhs 跨步、rhs 连续，同一 bank 空间必互撞，只能分 buffer（昇腾 L0A/L0B/L0C 的形状）。
+  - 下一步 **R3**（DMA 引擎 + descriptor 取指）。遗留：仲裁现在是固定优先级，没做轮转（等 R3 加 DMA 之后再评估）；swizzle 的设计留到 R4。
 
 ## 可选项（主线之外）
 
