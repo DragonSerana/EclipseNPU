@@ -143,8 +143,33 @@ DMA        LOAD / STORE                  32 B/拍
     一个 cycle 最多搬运就是 bank 个数据，包括 sram到 pe或者 dma在 ddr和 sram来回搬运
     并不是按照顺序分，而是交叉分，比如0/4是一个bank,1/5是一个bank
     b0, b1, b2, b3, b0, b1, b2, b3
+    bank是 32的原因 是 16x16的 mac阵列，一拍需要 A16个 ，B16个，一共 32个元素.一个 bank是 16bit,正好 放  fp16的 数据
 
 # SRAM 
     1W1R模型,如果读写的地址和数据复用 ，然后通过另外的 pin区分 是读还是写 。不过这样的话，就做不到同时读写了。所以这里用两套。
+    DMA 往 SRAM 写的时候，不消耗阵列的读带宽。
+
     // 组合读，这样是不不合理，因实际物理需要晶体管变动，所以一般是同步读，即clk到来后再给出
     assign rdata = mem[raddr]; 
+
+# DDR
+    DDR 这个名字就是 Double Data Rate：数据在时钟的上升沿和下降沿各传一次
+    x16指的是 16根线，一次 只能传递 16bit,2Byte的 数据，有因为 一拍 上升沿和下降沿都能传递数据，所以 是 4byte，一次 突发 16byte，需要 4 cycle
+    clk_ddr和 clk_npu是不一样的，clk_ddr一个沿 是2个byte,一个 cycle是 4byte,然后 clk_npu侧 ，一拍 可以 收 32byte,对应 两次 突发
+
+# 突发
+    这个 突发，只是个 传输 单位，打包方式，不是 速率，所以 和 clk没有任何关系，这里 突发 默认 是 16byte,如果 一个 周期 穿 32 byte数据，那就是 两次突发，如果 一个周期 48byte个 数据， 那就是 三次 突发
+
+    DDR获取 地址  基本 单位 就是 突发，比如 0x0e开始的 16byte数据，要 拿到 突发 0,和 突发 1 的 数据，然后  拼起来
+    BL（ Burst Length）8，16-bit 总线 burst_bytes = BL × DDR数据总线位宽 / 8
+
+    DMA_BURST_BYTES     = 16 字节   ← 来自【内存接口】
+                                   x16 引脚 × BL8 = 16 字节，内存读取最小单位
+                                   为了平摊启动成本的固定延迟，所以添加了内存读取最小单位。
+    DMA_BYTES_PER_CYCLE = 32 字节   ← 来自【MAC 阵列】
+                                    阵列一行操作数 = 16 个 fp16 = 32 字节，每cycle能读取的Byte数
+                                    DMA_BYTES_PER_CYCLE是因为 我们 MAC要吃 16个 fp16，是硬件的设计 方向 ，不是因为 硬件 得到 这个数，而是基于 我们的 NPU要 16个 FP16的 MAC,硬件 要尽可能的 保证 cycle是 32
+    比如说 输入MN是 128x128,MAC是 16x16,我一次从SRAM获取的数据要32(决定 SRAM 读端口数 = 32 个 bank)*2Byte,因为 我每行 数据 要复用 8次，所以 dmaload的速度，最好 是 64/8=8Byte数据。如果 输入 是 16x16,MAC没有 一点 复用，所以 dmaload的速度最好是64Byte.这里我们 选择 32 ，是为了兼顾两种 情况 ，而且不 阻碍效率，也不浪费面积，硬件要满足这个设计，通过给DDR_CLK提高频率等方式，在突发是16byte的基础上，每NPU_CLK吞吐率Byte数据，满足我的MAC要求。
+
+    默认 damload ,ddr那边1cycle可以提供32Byte的数据，至于 物理上 怎么 实现，我们 不管 。一般 是 通过 多通道/多 bank实现的一次读取两个最小单位。实际其实突发和DDR给数据的速率也不是两倍大小。
+    DDR 读取数据的时钟，不和我从 sram这侧 看到 ddr给 数据的 时钟(dmaload)相同 ，到 sram这里，已经是 NPU_CLK了，这是突发和ddr提供数据每cycle不同最主要的 原因
